@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "comment": "pose x facing -> frames. 不足しているポーズは docs/ASSETS.md を参照。画像を追加したらここに登録するだけで行動が解放される。",
+  "entries": [
+    { "pose": "stand", "facing": "front", "frames": ["front"] },
+    { "pose": "stand", "facing": "right", "frames": ["side_right"] },
+    { "pose": "stand", "facing": "back",  "frames": ["back"] },
+    { "pose": "walk",  "facing": "right", "frames": ["side_right"], "fps": 0, "bob": true }
+  ]
+}
