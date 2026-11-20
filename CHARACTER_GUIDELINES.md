@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="CHARACTER_GUIDELINES.en.md">English</a> | <b>日本語</b>
+</p>
+
 # キャラクター「鈴」利用ガイドライン
 
 最終更新：2026年11月21日
@@ -6,6 +10,7 @@
 このリポジトリのプログラム（ソースコード）は [MIT License](LICENSE) で公開しています。
 ただし、**キャラクター「鈴（Suzu）」は MIT License の対象外**です。
 鈴のデザインや画像の扱いは、このガイドラインに従ってください。
+英語版と内容が異なる場合は、この日本語版が優先されます。
 
 ---
 
@@ -42,7 +47,14 @@
 https://github.com/Lis-louis/suzu-desktop-focus
 ```
 
-URL を載せにくい場所では「キャラクター「鈴」© Lis-louis」だけでもかまいません。
+英語で表記する場合は、次のように書いてもかまいません。
+
+```
+Character "Suzu" © Lis-louis
+https://github.com/Lis-louis/suzu-desktop-focus
+```
+
+URL を載せにくい場所では、1行目の表記だけでもかまいません。
 
 ### ファンアートについて
 

@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         do { sprites = try SpriteStore() } catch {
-            let a = NSAlert(); a.messageText = "鈴の画像素材を読み込めませんでした"; a.informativeText = error.localizedDescription
+            let a = NSAlert(); a.messageText = settings.language.pick("鈴の画像素材を読み込めませんでした", "Couldn't load Suzu's image assets"); a.informativeText = error.localizedDescription
             a.runModal(); NSApp.terminate(nil); return
         }
         var config = MascotSimulation.Config()
@@ -97,27 +97,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     }
 
     private func updateStatusText() {
-        let a = sim.activity
-        let text: String = switch a {
-        case .idle: "のんびり立っている"
-        case .walk: "お散歩中"
-        case .lookAround: "きょろきょろしている"
-        case .turnAway: "あっちを見ている"
-        case .doze: "うとうとしている"
-        case .sit: "座っている"
-        case .sleep: "眠っている"
-        case .stretch: "伸びをしている"
-        case .joy: "ごきげん"
-        case .goToEdge: "画面の端へ向かっている"
-        case .jumpDown: "飛び降りようとしている"
-        case .climb: "よじ登っている"
-        case .hang: "ぶら下がっている"
-        case .react: "反応している"
-        case .dragged: "つままれている"
-        case .falling: "落ちている"
-        }
+        let text = L.activityText(sim.activity)
         if status.activityText != text { status.activityText = text }
         if status.bridgeConnected != bridge.isConnected { status.bridgeConnected = bridge.isConnected }
+    }
+
+    /// 現在の表示言語
+    private var L: AppLanguage { settings.language }
+
+    /// 言語変更をメニュー・ウィンドウタイトルなど AppKit 側に反映する
+    private func applyLanguage() {
+        setupMainMenu()
+        rebuildMenu()
+        updateStatusText()
+        controlWindow?.title = L.pick("鈴 コントロールパネル", "Suzu Control Panel")
+        settingsWindow?.title = L.pick("鈴の設定", "Suzu Settings")
+        conversationWindow?.title = L.pick("鈴と話す", "Chat with Suzu")
+        statusItem?.button?.image?.accessibilityDescription = L.pick("鈴", "Suzu")
+        render()
     }
 
     func applicationWillTerminate(_ note: Notification) {
@@ -181,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         let frameIndex = resolved.fps > 0 ? Int(animationClock * resolved.fps) % resolved.frames.count : 0
         let image = sprites.image(resolved.frames[frameIndex])
         let scale = panel.backingScaleFactor
-        view.render(image: image, mirrored: resolved.mirrored, bob: snap.bobOffset, emote: snap.emote, scale: scale)
+        view.render(image: image, mirrored: resolved.mirrored, bob: snap.bobOffset, emoteText: L.emoteText(snap.emote), scale: scale)
         let size = panel.frame.size
         var origin = CGPoint(x: snap.position.x - size.width / 2, y: snap.position.y)
         origin.x = (origin.x * scale).rounded() / scale
@@ -201,6 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         settings.$paused.dropFirst().sink { [weak self] v in self?.sim.config.paused = v; self?.rebuildMenu() }.store(in: &cancellables)
         settings.$allowPlaceholders.dropFirst().sink { [weak self] v in self?.sim.config.allowPlaceholders = v }.store(in: &cancellables)
         settings.$allowMirroring.dropFirst().sink { [weak self] v in self?.sim.catalog.allowMirroring = v }.store(in: &cancellables)
+        settings.$language.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.applyLanguage() } }.store(in: &cancellables)
         settings.$interactWithWindows.dropFirst().sink { [weak self] v in
             self?.sensor.interactWithWindows = v
             DispatchQueue.main.async { self?.refreshTerrain() }
@@ -289,7 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "bell.fill", accessibilityDescription: "鈴")
+        statusItem.button?.image = NSImage(systemSymbolName: "bell.fill", accessibilityDescription: L.pick("鈴", "Suzu"))
         rebuildMenu()
     }
 
@@ -298,30 +296,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "コントロールパネル", action: #selector(openControlPanel), keyEquivalent: "1").target = self
-        appMenu.addItem(withTitle: "設定…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        appMenu.addItem(withTitle: L.pick("コントロールパネル", "Control Panel"), action: #selector(openControlPanel), keyEquivalent: "1").target = self
+        appMenu.addItem(withTitle: L.pick("設定…", "Settings…"), action: #selector(openSettings), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "ウインドウを隠す", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: L.pick("ウインドウを隠す", "Hide Windows"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "鈴を終了", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: L.pick("鈴を終了", "Quit Suzu"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 
         let editItem = NSMenuItem()
-        let edit = NSMenu(title: "編集")
-        edit.addItem(withTitle: "取り消す", action: Selector(("undo:")), keyEquivalent: "z")
+        let edit = NSMenu(title: L.pick("編集", "Edit"))
+        edit.addItem(withTitle: L.pick("取り消す", "Undo"), action: Selector(("undo:")), keyEquivalent: "z")
         edit.addItem(.separator())
-        edit.addItem(withTitle: "カット", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "コピー", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "ペースト", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "すべてを選択", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(withTitle: L.pick("カット", "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: L.pick("コピー", "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: L.pick("ペースト", "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: L.pick("すべてを選択", "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
         main.addItem(editItem)
 
         let windowItem = NSMenuItem()
-        let windowMenu = NSMenu(title: "ウインドウ")
-        windowMenu.addItem(withTitle: "閉じる", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        windowMenu.addItem(withTitle: "しまう", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        let windowMenu = NSMenu(title: L.pick("ウインドウ", "Window"))
+        windowMenu.addItem(withTitle: L.pick("閉じる", "Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowMenu.addItem(withTitle: L.pick("しまう", "Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowItem.submenu = windowMenu
         main.addItem(windowItem)
         NSApp.windowsMenu = windowMenu
@@ -331,9 +329,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     /// Dock アイコンの右クリックメニュー
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let m = NSMenu()
-        m.addItem(withTitle: status.running ? "鈴を止める" : "鈴を起動する", action: #selector(toggleRunning), keyEquivalent: "").target = self
-        m.addItem(withTitle: "鈴を呼ぶ", action: #selector(summon), keyEquivalent: "").target = self
-        m.addItem(withTitle: "コントロールパネル", action: #selector(openControlPanel), keyEquivalent: "").target = self
+        m.addItem(withTitle: status.running ? L.pick("鈴を止める", "Stop Suzu") : L.pick("鈴を起動する", "Start Suzu"), action: #selector(toggleRunning), keyEquivalent: "").target = self
+        m.addItem(withTitle: L.pick("鈴を呼ぶ", "Call Suzu"), action: #selector(summon), keyEquivalent: "").target = self
+        m.addItem(withTitle: L.pick("コントロールパネル", "Control Panel"), action: #selector(openControlPanel), keyEquivalent: "").target = self
         return m
     }
 
@@ -341,19 +339,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
 
     private func makeMenu() -> NSMenu {
         let m = NSMenu()
-        m.addItem(withTitle: status.running ? "鈴を止める" : "鈴を起動する", action: #selector(toggleRunning), keyEquivalent: "").target = self
-        m.addItem(withTitle: "コントロールパネル…", action: #selector(openControlPanel), keyEquivalent: "").target = self
+        m.addItem(withTitle: status.running ? L.pick("鈴を止める", "Stop Suzu") : L.pick("鈴を起動する", "Start Suzu"), action: #selector(toggleRunning), keyEquivalent: "").target = self
+        m.addItem(withTitle: L.pick("コントロールパネル…", "Control Panel…"), action: #selector(openControlPanel), keyEquivalent: "").target = self
         m.addItem(.separator())
-        let summonItem = m.addItem(withTitle: "鈴を呼ぶ", action: #selector(summon), keyEquivalent: "")
+        let summonItem = m.addItem(withTitle: L.pick("鈴を呼ぶ", "Call Suzu"), action: #selector(summon), keyEquivalent: "")
         summonItem.target = self
-        let pause = m.addItem(withTitle: "自律行動を一時停止", action: #selector(togglePause), keyEquivalent: "")
+        let pause = m.addItem(withTitle: L.pick("自律行動を一時停止", "Pause Autonomous Behavior"), action: #selector(togglePause), keyEquivalent: "")
         pause.target = self
         pause.state = settings.paused ? .on : .off
         m.addItem(.separator())
-        m.addItem(withTitle: "鈴と話す…", action: #selector(openConversation), keyEquivalent: "").target = self
-        m.addItem(withTitle: "設定…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        m.addItem(withTitle: L.pick("鈴と話す…", "Chat with Suzu…"), action: #selector(openConversation), keyEquivalent: "").target = self
+        m.addItem(withTitle: L.pick("設定…", "Settings…"), action: #selector(openSettings), keyEquivalent: ",").target = self
         m.addItem(.separator())
-        m.addItem(withTitle: "終了", action: #selector(quit), keyEquivalent: "q").target = self
+        m.addItem(withTitle: L.pick("終了", "Quit"), action: #selector(quit), keyEquivalent: "q").target = self
         return m
     }
 
@@ -380,7 +378,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
                 onSettings: { [weak self] in self?.openSettings() },
                 onQuit: { NSApp.terminate(nil) })
             let w = NSWindow(contentViewController: NSHostingController(rootView: view))
-            w.title = "鈴 コントロールパネル"
+            w.title = L.pick("鈴 コントロールパネル", "Suzu Control Panel")
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.isReleasedWhenClosed = false
             w.center()
@@ -395,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         if settingsWindow == nil {
             let missing = sim.catalog.missingPoses().map { "\($0.0.rawValue)/\($0.1.rawValue)" }
             let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, missingAssets: missing)))
-            w.title = "鈴の設定"
+            w.title = L.pick("鈴の設定", "Suzu Settings")
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             settingsWindow = w
@@ -408,8 +406,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     @objc private func openConversation() {
         conversation.connected = bridge.isConnected
         if conversationWindow == nil {
-            let w = NSWindow(contentViewController: NSHostingController(rootView: ConversationView(model: conversation)))
-            w.title = "鈴と話す"
+            let w = NSWindow(contentViewController: NSHostingController(rootView: ConversationView(model: conversation, settings: settings)))
+            w.title = L.pick("鈴と話す", "Chat with Suzu")
             w.styleMask = [.titled, .closable, .resizable]
             w.isReleasedWhenClosed = false
             w.setContentSize(NSSize(width: 360, height: 420))

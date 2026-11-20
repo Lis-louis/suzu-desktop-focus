@@ -21,14 +21,15 @@ struct ControlPanelView: View {
     private let navy = Color(red: 0.24, green: 0.29, blue: 0.56)
 
     var body: some View {
+        let L = settings.language
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 Image(systemName: "bell.fill").font(.title2).foregroundStyle(accent)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("鈴").font(.title2.bold()).foregroundStyle(navy)
+                    Text(L.pick("鈴", "Suzu")).font(.title2.bold()).foregroundStyle(navy)
                     HStack(spacing: 6) {
                         Circle().fill(status.running ? Color.green : Color.gray).frame(width: 8, height: 8)
-                        Text(status.running ? (settings.paused ? "表示中（一時停止）" : "デスクトップで活動中") : "停止中")
+                        Text(status.running ? (settings.paused ? L.pick("表示中（一時停止）", "Visible (paused)") : L.pick("デスクトップで活動中", "Active on the desktop")) : L.pick("停止中", "Stopped"))
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -36,11 +37,11 @@ struct ControlPanelView: View {
             }
 
             if status.running && !status.activityText.isEmpty {
-                Text("いまの様子：\(status.activityText)").font(.callout).foregroundStyle(.secondary)
+                Text(L.pick("いまの様子：", "Now: ") + status.activityText).font(.callout).foregroundStyle(.secondary)
             }
 
             Button(action: onToggleRunning) {
-                Label(status.running ? "鈴を止める" : "鈴を起動する",
+                Label(status.running ? L.pick("鈴を止める", "Stop Suzu") : L.pick("鈴を起動する", "Start Suzu"),
                       systemImage: status.running ? "stop.fill" : "play.fill")
                     .frame(maxWidth: .infinity).padding(.vertical, 6)
             }
@@ -50,23 +51,23 @@ struct ControlPanelView: View {
             .keyboardShortcut(.defaultAction)
 
             HStack {
-                Button("呼ぶ", systemImage: "hand.wave", action: onSummon).disabled(!status.running)
-                Button("話す", systemImage: "bubble.left", action: onConversation)
-                Button("設定", systemImage: "gearshape", action: onSettings)
+                Button(L.pick("呼ぶ", "Call"), systemImage: "hand.wave", action: onSummon).disabled(!status.running)
+                Button(L.pick("話す", "Chat"), systemImage: "bubble.left", action: onConversation)
+                Button(L.pick("設定", "Settings"), systemImage: "gearshape", action: onSettings)
             }
             .frame(maxWidth: .infinity)
 
             Divider()
-            Toggle("自律行動を一時停止（その場でじっとする）", isOn: $settings.paused).disabled(!status.running)
-            Toggle("ログイン時に起動", isOn: $settings.launchAtLogin)
-            Toggle("アプリ起動時にこの画面を表示", isOn: $settings.showControlPanelOnLaunch)
+            Toggle(L.pick("自律行動を一時停止（その場でじっとする）", "Pause autonomous behavior (stay still)"), isOn: $settings.paused).disabled(!status.running)
+            Toggle(L.pick("ログイン時に起動", "Launch at login"), isOn: $settings.launchAtLogin)
+            Toggle(L.pick("アプリ起動時にこの画面を表示", "Show this panel when the app opens"), isOn: $settings.showControlPanelOnLaunch)
 
             Divider()
             HStack {
-                Text(status.bridgeConnected ? "鈴秘書：接続中" : "鈴秘書：未接続")
+                Text(status.bridgeConnected ? L.pick("鈴秘書：接続中", "Suzu Secretary: connected") : L.pick("鈴秘書：未接続", "Suzu Secretary: not connected"))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("アプリを終了", role: .destructive, action: onQuit)
+                Button(L.pick("アプリを終了", "Quit app"), role: .destructive, action: onQuit)
             }
         }
         .padding(20)

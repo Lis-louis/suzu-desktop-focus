@@ -70,7 +70,8 @@ final class MascotView: NSView {
     override var isFlipped: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    func render(image: CGImage?, mirrored: Bool, bob: CGFloat, emote: Emote, scale: CGFloat) {
+    /// - Parameter emoteText: 頭上の吹き出しの文字（nil で非表示）
+    func render(image: CGImage?, mirrored: Bool, bob: CGFloat, emoteText: String?, scale: CGFloat) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         if image !== currentImage { spriteLayer.contents = image; currentImage = image }
@@ -81,15 +82,15 @@ final class MascotView: NSView {
         spriteLayer.position = CGPoint(x: bounds.midX, y: bob)
         spriteLayer.setAffineTransform(mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity)
 
-        if emote == .none {
-            emoteBubble.isHidden = true
-        } else {
-            emoteLayer.string = emote.rawValue
+        if let text = emoteText {
+            emoteLayer.string = text
             emoteLayer.contentsScale = scale
-            let textW = max(26, CGFloat(emote.rawValue.count) * 15 + 12)
+            let textW = max(26, CGFloat(text.count) * (text.allSatisfy(\.isASCII) ? 10 : 15) + 12)
             emoteBubble.frame = CGRect(x: bounds.midX + w * 0.15, y: bodyHeight - 6, width: textW, height: 24)
             emoteLayer.frame = CGRect(x: 0, y: 2, width: textW, height: 20)
             emoteBubble.isHidden = false
+        } else {
+            emoteBubble.isHidden = true
         }
         CATransaction.commit()
     }

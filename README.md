@@ -71,9 +71,9 @@ swift test                    # unit tests
 
 ### Settings
 
-You can change her size (60–160%), whether she climbs onto windows, and the temporary options below.
+You can change the display language (Japanese / English), her size (60–160%), whether she climbs onto windows, and the temporary options below.
 
-> The app's UI is currently in Japanese.
+> The app is shown in Japanese by default. You can switch it to English in Settings → Language.
 
 ## Project structure
 
@@ -155,7 +155,7 @@ Code and character are licensed separately.
 | What | License |
 |---|---|
 | Code (`Sources/`, `Tests/`, `scripts/`, `tools/`, etc.) | [MIT License](LICENSE) |
-| The character Suzu (name, design, images, icon, character sheets) | [Character Usage Guidelines](CHARACTER_GUIDELINES.md) (in Japanese) |
+| The character Suzu (name, design, images, icon, character sheets) | [Character Usage Guidelines](CHARACTER_GUIDELINES.en.md) |
 
 You may draw and share non-commercial fan art of Suzu, with credit.
 The following are not allowed:

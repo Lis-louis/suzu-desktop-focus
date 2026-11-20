@@ -21,11 +21,14 @@ final class ConversationModel: ObservableObject {
 
 struct ConversationView: View {
     @ObservedObject var model: ConversationModel
+    @ObservedObject var settings: AppSettings
 
     var body: some View {
+        let L = settings.language
         VStack(spacing: 0) {
             if !model.connected {
-                Text("鈴秘書はまだ接続されていません。接続すると、ここで鈴とお話しできます。")
+                Text(L.pick("鈴秘書はまだ接続されていません。接続すると、ここで鈴とお話しできます。",
+                            "Suzu Secretary is not connected yet. Once it is, you can chat with Suzu here."))
                     .font(.caption).foregroundStyle(.secondary)
                     .padding(8).frame(maxWidth: .infinity).background(Color.blue.opacity(0.06))
             }
@@ -51,8 +54,8 @@ struct ConversationView: View {
             }
             Divider()
             HStack {
-                TextField("鈴に話しかける…", text: $model.draft).textFieldStyle(.roundedBorder).onSubmit { model.send() }
-                Button("送信") { model.send() }.disabled(model.draft.isEmpty)
+                TextField(L.pick("鈴に話しかける…", "Say something to Suzu…"), text: $model.draft).textFieldStyle(.roundedBorder).onSubmit { model.send() }
+                Button(L.pick("送信", "Send")) { model.send() }.disabled(model.draft.isEmpty)
             }.padding(10)
         }
         .frame(minWidth: 340, minHeight: 320)

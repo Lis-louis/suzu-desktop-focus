@@ -16,6 +16,8 @@ final class AppSettings: ObservableObject {
     /// 鈴をデスクトップに表示して動かすか（コントロールパネルの起動/停止）
     @Published var mascotRunning: Bool { didSet { d.set(mascotRunning, forKey: "mascotRunning") } }
     @Published var showControlPanelOnLaunch: Bool { didSet { d.set(showControlPanelOnLaunch, forKey: "showControlPanelOnLaunch") } }
+    /// 表示言語（既定は日本語）
+    @Published var language: AppLanguage { didSet { d.set(language.rawValue, forKey: "language") } }
     @Published var launchAtLogin: Bool {
         didSet {
             guard launchAtLogin != oldValue else { return }
@@ -32,7 +34,7 @@ final class AppSettings: ObservableObject {
     init() {
         d.register(defaults: ["scale": 1.0, "interactWithWindows": true, "paused": false,
                               "allowMirroring": false, "allowPlaceholders": false,
-                              "mascotRunning": true, "showControlPanelOnLaunch": true])
+                              "mascotRunning": true, "showControlPanelOnLaunch": true, "language": "ja"])
         scale = d.double(forKey: "scale")
         interactWithWindows = d.bool(forKey: "interactWithWindows")
         paused = d.bool(forKey: "paused")
@@ -40,6 +42,7 @@ final class AppSettings: ObservableObject {
         allowPlaceholders = d.bool(forKey: "allowPlaceholders")
         mascotRunning = d.bool(forKey: "mascotRunning")
         showControlPanelOnLaunch = d.bool(forKey: "showControlPanelOnLaunch")
+        language = AppLanguage(rawValue: d.string(forKey: "language") ?? "ja") ?? .ja
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
@@ -59,33 +62,40 @@ struct SettingsView: View {
     let missingAssets: [String]
 
     var body: some View {
+        let L = settings.language
         Form {
-            Section("表示") {
+            Section(L.pick("言語", "Language")) {
+                Picker(L.pick("表示言語", "Display language"), selection: $settings.language) {
+                    ForEach(AppLanguage.allCases) { Text($0.displayName).tag($0) }
+                }
+            }
+            Section(L.pick("表示", "Appearance")) {
                 HStack {
-                    Text("大きさ")
+                    Text(L.pick("大きさ", "Size"))
                     Slider(value: $settings.scale, in: 0.6...1.6, step: 0.1)
                     Text("\(Int(settings.scale * 100))%").monospacedDigit().frame(width: 44, alignment: .trailing)
                 }
             }
-            Section("行動") {
-                Toggle("ウィンドウの上に乗る・飛び降りる", isOn: $settings.interactWithWindows)
-                Toggle("自律行動を一時停止", isOn: $settings.paused)
+            Section(L.pick("行動", "Behavior")) {
+                Toggle(L.pick("ウィンドウの上に乗る・飛び降りる", "Climb onto and jump off windows"), isOn: $settings.interactWithWindows)
+                Toggle(L.pick("自律行動を一時停止", "Pause autonomous behavior"), isOn: $settings.paused)
             }
             Section {
-                Toggle("左向きに右向き画像を反転して使う（仮）", isOn: $settings.allowMirroring)
-                Toggle("素材が未完成の行動も試す（立ち姿＋吹き出しで代用）", isOn: $settings.allowPlaceholders)
+                Toggle(L.pick("左向きに右向き画像を反転して使う（仮）", "Mirror the right-facing image for the left (temporary)"), isOn: $settings.allowMirroring)
+                Toggle(L.pick("素材が未完成の行動も試す（立ち姿＋吹き出しで代用）", "Try behaviors with unfinished assets (standing pose + bubble)"), isOn: $settings.allowPlaceholders)
             } header: {
-                Text("素材が揃うまでの暫定設定")
+                Text(L.pick("素材が揃うまでの暫定設定", "Temporary options until the assets are ready"))
             } footer: {
-                Text("反転すると髪飾りが反対側に移るため、デザイン資料とは異なります。既定ではオフです。")
+                Text(L.pick("反転すると髪飾りが反対側に移るため、デザイン資料とは異なります。既定ではオフです。",
+                            "Mirroring moves the hair ornament to the other side, which differs from the character sheets. Off by default."))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            Section("起動") {
-                Toggle("ログイン時に起動", isOn: $settings.launchAtLogin)
+            Section(L.pick("起動", "Startup")) {
+                Toggle(L.pick("ログイン時に起動", "Launch at login"), isOn: $settings.launchAtLogin)
             }
             if !missingAssets.isEmpty {
-                Section("不足している画像素材 (\(missingAssets.count))") {
-                    Text(missingAssets.joined(separator: "、")).font(.caption).foregroundStyle(.secondary)
+                Section(L.pick("不足している画像素材", "Missing image assets") + " (\(missingAssets.count))") {
+                    Text(missingAssets.joined(separator: L.pick("、", ", "))).font(.caption).foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
             }
