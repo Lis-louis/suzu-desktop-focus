@@ -1,166 +1,172 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="128" alt="鈴 アイコン">
+  <img src="docs/images/icon.png" width="128" alt="Suzu icon">
 </p>
 
-<h1 align="center">鈴 Suzu — macOS デスクトップマスコット</h1>
+<h1 align="center">Suzu 鈴 — a macOS desktop mascot</h1>
 
 <p align="center">
-  オリジナルキャラクター「鈴」が Mac のデスクトップで暮らすネイティブアプリ。<br>
-  歩いたり、ウィンドウの上に乗ったり、うとうとしたり、クリックに反応したりします。
+  <b>English</b> | <a href="README.ja.md">日本語</a>
+</p>
+
+<p align="center">
+  A native macOS app where the original character Suzu lives on your desktop.<br>
+  She walks around, stands on top of your windows, dozes off, and reacts when you click her.
 </p>
 
 ---
 
-## 特徴
+## Features
 
-- **Swift ネイティブ**：AppKit + Core Animation + SwiftUI。Electron / Web 技術は不使用
-- **デスクトップに常駐**：枠なし・背景透過。すべての操作スペース・フルスクリーンの上に表示
-- **作業の邪魔をしない**：透明部分のクリックは後ろのアプリへ通り、鈴をクリックしてもフォーカスを奪わない
-- **自律行動**：待機・散歩・見回す・振り返る・うとうと・画面の端へ行く など。
-  元気度・時刻・居場所・クールダウンで確率が変わるため、完全なランダムにはならない
-- **ウィンドウとの関わり**：ウィンドウの上に立つ／ウィンドウを動かすと一緒に移動／閉じると落ちる／飛び降りる
-- **マウス操作**：クリックで反応、ドラッグで移動・放り投げ、ダブルクリックで会話画面、カーソルの方を向く
-- **複数ディスプレイ対応**、位置の保存と復元、ログイン時の自動起動
-- **軽量**：CPU 0.3〜0.8%、メモリ 約 75〜100MB（Apple Silicon・release ビルドでの実測）
-- **鈴秘書との連携口**：ローカル AI 秘書「鈴秘書」から通知・セリフ・表情を受け取れる
+- **Native Swift**: AppKit + Core Animation + SwiftUI. No Electron or web technologies.
+- **Lives on your desktop**: borderless and transparent. Shown on every Space and over full-screen apps.
+- **Stays out of your way**: clicks on transparent areas pass through to the app behind, and clicking Suzu never steals focus from the app you are using.
+- **Acts on her own**: idling, walking, looking around, turning away, dozing, heading to the screen edge, and more.
+  Her choices depend on her energy, the time of day, where she is, and cooldowns, so her behavior isn't purely random.
+- **Interacts with windows**: stands on top of windows, moves along when a window moves, falls when it closes, and jumps down.
+- **Mouse interaction**: click to get a reaction, drag to move or throw her, double-click to open the chat window. She turns toward your cursor.
+- **Multiple displays**, saved and restored position, and launch at login.
+- **Lightweight**: about 0.3–0.8% CPU and 75–100 MB of memory (measured on Apple Silicon, release build).
+- **Hooks for Suzu Secretary**: receives notifications, lines, and expressions from the local AI assistant "Suzu Secretary" (鈴秘書).
 
-## 動作環境
+## Requirements
 
-- macOS 14 Sonoma 以降（Apple Silicon 推奨）
-- Xcode 16 以降 / Swift 6 ツールチェーン（ビルドする場合）
+- macOS 14 Sonoma or later (Apple Silicon recommended)
+- Xcode 16 or later / Swift 6 toolchain (to build)
 
-## ビルドと起動
+## Build and run
 
 ```sh
 git clone https://github.com/Lis-louis/suzu-desktop-focus.git
 cd suzu-desktop-focus
 
-scripts/build_app.sh          # build/Suzu.app を作成
-open build/Suzu.app           # 起動
+scripts/build_app.sh          # creates build/Suzu.app
+open build/Suzu.app           # launch
 ```
 
-開発中は次のコマンドも使えます。
+During development you can also use:
 
 ```sh
-swift run Suzu                # .app を作らずに起動
-swift test                    # 単体テスト
+swift run Suzu                # launch without building the .app
+swift test                    # unit tests
 ```
 
-## 使い方
+## Usage
 
-| 操作 | 内容 |
+| Action | Result |
 |---|---|
-| 鈴をクリック | 反応する（眠っていたら起きる） |
-| 鈴をドラッグ | 好きな場所へ移動。勢いよく離すと放り投げる |
-| 鈴をダブルクリック | 会話画面を開く |
-| 鈴を右クリック | メニュー |
-| Dock のアイコンをクリック | コントロールパネルを開く |
-| Dock のアイコンを右クリック | 鈴を止める／起動する・呼ぶ |
-| ⌘Q | アプリを終了 |
+| Click Suzu | She reacts (and wakes up if she was sleeping) |
+| Drag Suzu | Move her anywhere. Release with momentum to throw her |
+| Double-click Suzu | Open the chat window |
+| Right-click Suzu | Menu |
+| Click the Dock icon | Open the control panel |
+| Right-click the Dock icon | Stop/start Suzu, call her |
+| ⌘Q | Quit the app |
 
-### コントロールパネル
+### Control panel
 
-- **鈴を止める／起動する**：アプリは動かしたまま、鈴だけを消す・出す（停止中は CPU をほぼ使わない）
-- **呼ぶ**：マウスのある画面に鈴を呼び寄せる
-- **自律行動を一時停止**：その場でじっとさせる
-- **ログイン時に起動**：Mac にログインしたら自動で起動（`/Applications` に置いて使うのがおすすめ）
+- **Stop / Start Suzu**: hides or shows Suzu while the app keeps running (almost no CPU while stopped).
+- **Call**: brings Suzu to the screen your mouse is on.
+- **Pause autonomous behavior**: keeps her still where she is.
+- **Launch at login**: starts automatically when you log in (works best with the app in `/Applications`).
 
-### 設定
+### Settings
 
-大きさ（60〜160%）、ウィンドウに乗るかどうか、素材が揃うまでの暫定設定（下記）を変更できます。
+You can change her size (60–160%), whether she climbs onto windows, and the temporary options below.
 
-## プロジェクト構成
+> The app's UI is currently in Japanese.
+
+## Project structure
 
 ```
 Sources/
-├─ SuzuCore/      行動・物理・地形・スプライト解決（AppKit 非依存・テスト対象）
-├─ SuzuBridge/    鈴秘書との連携インターフェース
-└─ SuzuApp/       画面表示・マウス操作・コントロールパネル・設定・会話画面
+├─ SuzuCore/      behavior, physics, terrain, sprite resolution (no AppKit, unit-tested)
+├─ SuzuBridge/    interface to Suzu Secretary
+└─ SuzuApp/       rendering, mouse input, control panel, settings, chat window
 Resources/
-├─ Sprites/       鈴の画像（PNG）と manifest.json
-└─ AppIcon/       アプリアイコン
-Tests/            単体テスト
+├─ Sprites/       Suzu's images (PNG) and manifest.json
+└─ AppIcon/       app icon
+Tests/            unit tests
 docs/
-├─ DESIGN.md      設計書（デザイン分析・技術選定・実現可能性・アーキテクチャ）
-└─ ASSETS.md      アニメーション素材の一覧と不足素材
-tools/            素材の切り出し・アイコン作成・連携テスト用ツール
-scripts/          .app のビルドスクリプト
+├─ DESIGN.md      design document (design analysis, technology choices, feasibility, architecture)
+└─ ASSETS.md      animation assets and the list of missing ones
+tools/            tools for cutting out sprites, making the icon, and testing the bridge
+scripts/          .app build script
 ```
 
-詳しくは [docs/DESIGN.md](docs/DESIGN.md) を参照してください。
+See [docs/DESIGN.md](docs/DESIGN.md) for details (in Japanese).
 
-## キャラクターデザインと画像素材
+## Character design and image assets
 
-鈴のデザイン基準は `鈴の画像です。これを作って欲しいです/` にある 2 枚の設定資料です。
-**衣装・髪型・髪飾り・配色は資料から変更しない**ことをルールにしています。
+Suzu's design reference is the two character sheets in `鈴の画像です。これを作って欲しいです/`.
+The rule is **never to change her outfit, hairstyle, hair ornament, or colors** from those sheets.
 
-現在の画像は設定資料から切り出した 3 ポーズ（正面・右向き・背面）のみです。
-足りない素材（左向き、歩行コマ、座る、眠る、落下 など）は [docs/ASSETS.md](docs/ASSETS.md) にまとめています。
-画像を `Resources/Sprites/` に置いて `manifest.json` に 1 行足すと、その素材を使う行動が自動で使えるようになります。
+For now, the only images are three poses cut out from the sheets (front, facing right, back).
+Missing assets (facing left, walk frames, sitting, sleeping, falling, and so on) are listed in [docs/ASSETS.md](docs/ASSETS.md).
+Put a PNG in `Resources/Sprites/` and add one line to `manifest.json`, and the behaviors that need it are enabled automatically.
 
-### 素材が揃うまでの暫定設定
+### Temporary options until the assets are ready
 
-- **左向きに右向き画像を反転して使う（仮）**：鈴の髪飾りは左側だけにあるため、反転するとデザインが変わる。既定はオフ
-- **素材が未完成の行動も試す**：座る・眠る・登る などを、立ち姿＋吹き出しで代用して動作確認する
+- **Mirror the right-facing image for the left (temporary)**: Suzu's hair ornament is only on her left side, so mirroring changes her design. Off by default.
+- **Try behaviors with unfinished assets**: shows sitting, sleeping, climbing, and so on with the standing pose plus a speech bubble, for testing.
 
-## 鈴秘書との連携
+## Suzu Secretary integration
 
-`SecretaryBridge` プロトコルを通してやり取りします。現在はローカルの `DistributedNotificationCenter` を使った最小実装です。
+All communication goes through the `SecretaryBridge` protocol. The current implementation is a minimal one using the local `DistributedNotificationCenter`.
 
 ```sh
-# 鈴秘書の代わりにセリフを送る
-swift tools/send_event.swift '{"type":"speak","text":"おつかれさま！"}'
+# Send a line to Suzu in place of Suzu Secretary
+swift tools/send_event.swift '{"type":"speak","text":"Good work today!"}'
 ```
 
-| type | 例 | 動作 |
+| type | Example | Result |
 |---|---|---|
-| `speak` | `{"type":"speak","text":"…"}` | 吹き出しで話す・会話画面に表示 |
-| `notify` | `{"type":"notify","title":"…","body":"…"}` | 驚いて通知を表示 |
-| `expression` | `{"type":"expression","pose":"joy","duration":3}` | 表情・反応 |
-| `activity` | `{"type":"activity","hint":"userFocused"}` | 集中中・会議中は静かにする |
+| `speak` | `{"type":"speak","text":"…"}` | Says it in a speech bubble and shows it in the chat window |
+| `notify` | `{"type":"notify","title":"…","body":"…"}` | Looks surprised and shows the notification |
+| `expression` | `{"type":"expression","pose":"joy","duration":3}` | Expression / reaction |
+| `activity` | `{"type":"activity","hint":"userFocused"}` | Stays quiet while you focus or are in a meeting |
 
-## 開発状況
+## Status
 
-| 段階 | 状態 |
+| Stage | Status |
 |---|---|
-| 設計・素材の洗い出し | 完了 |
-| 透過常駐・ドラッグ・コントロールパネル | 完了 |
-| 基本アニメーション・デスクトップ移動 | 完了（今ある素材の範囲で） |
-| ウィンドウの上に乗る・追従・飛び降りる | 完了 |
-| ぶら下がる・登る | 仕組みは完成、素材待ち |
-| 座る・眠る・歩行アニメーション | 素材待ち |
-| 鈴秘書との本格連携 | 鈴秘書側の実装に合わせて対応予定 |
+| Design and asset inventory | Done |
+| Transparent overlay, dragging, control panel | Done |
+| Basic animation and moving around the desktop | Done (within the current assets) |
+| Standing on, following, and jumping off windows | Done |
+| Hanging and climbing | Logic done, waiting for assets |
+| Sitting, sleeping, walk animation | Waiting for assets |
+| Full Suzu Secretary integration | Planned, to match Suzu Secretary's implementation |
 
-### 既知の制限
+### Known limitations
 
-- 左向きの素材がないため、左へ歩くときは正面の立ち姿のまま移動する
-- 鈴は常に通常のウィンドウより手前に表示される（ウィンドウの裏に回る表現はしない）
-- ウィンドウを鈴が動かす機能はない（他のアプリを操作する権限が必要になるため）
+- There is no left-facing image yet, so she moves left in her front-facing standing pose.
+- Suzu is always shown in front of normal windows (she never goes behind them).
+- Suzu cannot move other windows (that would need permission to control other apps).
 
-## 権限について
+## Permissions
 
-ウィンドウの位置の取得に、画面収録やアクセシビリティの許可は必要ありません。
-取得するのはウィンドウの位置と大きさだけで、ウィンドウの名前や中身は読み取りません。
+Reading window positions needs no Screen Recording or Accessibility permission.
+The app reads only each window's position and size, never its title or contents.
 
-## ライセンス
+## License
 
-このリポジトリは、プログラムとキャラクターでライセンスが分かれています。
+Code and character are licensed separately.
 
-| 対象 | ライセンス |
+| What | License |
 |---|---|
-| プログラム（`Sources/`、`Tests/`、`scripts/`、`tools/` など） | [MIT License](LICENSE) |
-| キャラクター「鈴」（名前・デザイン・画像・アイコン・設定資料） | [キャラクター利用ガイドライン](CHARACTER_GUIDELINES.md) |
+| Code (`Sources/`, `Tests/`, `scripts/`, `tools/`, etc.) | [MIT License](LICENSE) |
+| The character Suzu (name, design, images, icon, character sheets) | [Character Usage Guidelines](CHARACTER_GUIDELINES.md) (in Japanese) |
 
-鈴のファンアートは、クレジット表記をすれば非営利で自由に描いて公開できます。
-次のことは禁止しています。
+You may draw and share non-commercial fan art of Suzu, with credit.
+The following are not allowed:
 
-- 公序良俗に反する使用
-- 無断転載・再配布
-- 商用利用
-- AI の学習への利用
+- Uses that go against public decency
+- Reposting or redistributing the images
+- Commercial use
+- Using Suzu for AI training
 
-改造版のアプリを配布するときは、鈴の画像と名前をすべて削除してください（公式の鈴ではなくなるため）。
+If you distribute a modified version of the app, remove all of Suzu's images and her name (it is no longer the official Suzu).
 
 ```
-キャラクター「鈴」© Lis-louis
+Character "Suzu" © Lis-louis
 ```
