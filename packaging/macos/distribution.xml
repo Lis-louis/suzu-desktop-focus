@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  鈴 Suzu — macOS 用インストーラー（.pkg）の定義。scripts/build_pkg.sh がバージョン番号などの「@…@」を置き換えて使う。
+  インストーラーの流れ: ようこそ → 使用許諾（MIT ＋ キャラクター利用ガイドライン）→ インストール先 → インストール → 完了
+-->
+<installer-gui-script minSpecVersion="2">
+    <title>SUZU_TITLE</title>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="license.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <background file="background.png" alignment="bottomleft" scaling="none"/>
+    <background-darkAqua file="background.png" alignment="bottomleft" scaling="none"/>
+
+    <options customize="never" require-scripts="false" hostArchitectures="@ARCHS@"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="14.0"/>
+        </allowed-os-versions>
+    </volume-check>
+
+    <choices-outline>
+        <line choice="default">
+            <line choice="jp.suzu.desktop"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="jp.suzu.desktop" visible="false">
+        <pkg-ref id="jp.suzu.desktop"/>
+    </choice>
+    <pkg-ref id="jp.suzu.desktop" version="@VERSION@" onConclusion="none">@COMPONENT@</pkg-ref>
+</installer-gui-script>

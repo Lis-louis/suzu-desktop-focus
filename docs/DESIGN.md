@@ -133,3 +133,37 @@ open build/Suzu.app
 アプリ操作：Dock のアイコン（クリックでコントロールパネル、右クリックで起動/停止・呼ぶ）、コントロールパネル（鈴の起動・停止、一時停止、ログイン時起動、終了）、⌘Q で終了。
 「鈴を止める」はアプリを動かしたまま鈴だけを消してタイマーも止める。停止状態は保存され、次回起動時も停止のまま（パネルが開く）。
 ⌘H でアプリを隠しても鈴本体は隠れない（`canHide = false`）。
+
+## 8. Windows 版とインストーラー
+
+### 構成
+
+| 層 | macOS 版 | Windows 版（`windows/`） |
+|---|---|---|
+| 行動・物理・地形・スプライト解決 | `SuzuCore`（Swift） | `Suzu.Core`（C# / .NET 8、ロジックを 1 対 1 で移植。同じ単体テストを `Suzu.Core.Tests` に移植） |
+| 連携 JSON | `SuzuBridge` | `Suzu.Core/SecretaryEvents.cs`（形式は同じ） |
+| 透過ウィンドウ | `NSPanel`＋`CALayer` | Win32 レイヤードウィンドウ（`UpdateLayeredWindow`、乗算済みアルファの DIB に GDI+ で描画） |
+| クリック透過・フォーカス | 透明ピクセルは背面へ／非アクティブ化パネル | 透明ピクセルは背面へ（レイヤードウィンドウの仕様）／`WS_EX_NOACTIVATE`・`MA_NOACTIVATE` |
+| ウィンドウ検出 | `CGWindowListCopyWindowInfo` | `EnumWindows`（Z オーダー順）＋`DWMWA_EXTENDED_FRAME_BOUNDS`。最小化・非表示・別の仮想デスクトップ（cloaked）・ツールウィンドウ・最前面ウィンドウは除外。タイトルや中身は読まない |
+| アプリの入口 | Dock・メニューバー | 通知領域（タスクトレイ）のアイコン |
+| 設定 | `UserDefaults` | `%APPDATA%\Suzu\settings.json` |
+| ログイン時に起動 | `SMAppService` | `HKCU\...\CurrentVersion\Run`（インストーラーの「サインイン時に起動」と同じ値） |
+| 鈴秘書との連携 | `DistributedNotificationCenter` | 名前付きパイプ（同じユーザーのみ接続可、1 行 1 イベント） |
+| 二重起動 | — | ミューテックス `SuzuDesktopMascot`。2 つ目の起動は既存の鈴のコントロールパネルを開く |
+
+座標：`Suzu.Core` は macOS と同じ「左下原点・y 上向き」で計算し、Windows の画面座標（左上原点）とは y の符号を反転して変換する。
+単位は物理ピクセル（PerMonitorV2）。鈴のいる画面の拡大率を `Config.SpeedScale` と体の大きさに掛け、拡大率が違う画面へ移ると大きさ・速さを合わせ直す。
+
+### インストーラー
+
+| | macOS（`scripts/build_pkg.sh`） | Windows（`windows/build.ps1`） |
+|---|---|---|
+| 形式 | `.pkg`（`pkgbuild`＋`productbuild`、Universal） | セットアップウィザード `.exe`（Inno Setup 6） |
+| 画面 | ようこそ → 使用許諾 → インストール先 → インストール → 完了（日本語・英語） | 言語 → ようこそ → 使用許諾 → インストール先 → 追加タスク → 確認 → インストール → 完了（日本語・英語） |
+| 使用許諾 | MIT License ＋ キャラクター利用ガイドライン（ビルド時に `LICENSE`・`CHARACTER_GUIDELINES*.md` から生成） | 同左 |
+| 入る場所 | `/Applications/Suzu.app` | 既定は `%LOCALAPPDATA%\Programs\Suzu`（管理者権限不要。ウィザードで全ユーザー向けも選べる） |
+| 起動中の鈴 | `preinstall` で終了 → `postinstall` でログイン中のユーザーとして起動 | 再起動マネージャーで終了 → 完了画面の「鈴を起動」 |
+| アンインストール | アプリをゴミ箱へ | 「アプリ」から。自動起動の登録を消し、設定を消すかを確認 |
+
+画像（ウィザードの左・右上の画像、.pkg の背景、`.ico`）は `tools/make_installer_art.swift`・`tools/make_ico.swift` でアプリアイコンから作る（キャラクター画像の加工はしない）。
+CI（`.github/workflows/installers.yml`）が両 OS でテスト・ビルドし、タグ `v*` で下書きリリースに添付する。

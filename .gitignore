@@ -64,3 +64,9 @@ fastlane/test_output
 # App bundle
 build/
 .DS_Store
+
+# .NET (Windows 版)
+windows/**/bin/
+windows/**/obj/
+*.user
+.vs/

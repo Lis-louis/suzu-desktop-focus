@@ -2,14 +2,14 @@
   <img src="docs/images/icon.png" width="128" alt="Suzu icon">
 </p>
 
-<h1 align="center">Suzu 鈴 — a macOS desktop mascot</h1>
+<h1 align="center">Suzu 鈴 — a desktop mascot for macOS and Windows</h1>
 
 <p align="center">
   <b>English</b> | <a href="README.ja.md">日本語</a>
 </p>
 
 <p align="center">
-  A native macOS app where the original character Suzu lives on your desktop.<br>
+  A native app for macOS and Windows where the original character Suzu lives on your desktop.<br>
   She walks around, stands on top of your windows, dozes off, and reacts when you click her.
 </p>
 
@@ -17,7 +17,7 @@
 
 ## Features
 
-- **Native Swift**: AppKit + Core Animation + SwiftUI. No Electron or web technologies.
+- **Native on each OS**: macOS uses Swift (AppKit + Core Animation + SwiftUI); Windows uses C# / .NET 8 (WinForms + Win32 layered windows). No Electron or web technologies.
 - **Lives on your desktop**: borderless and transparent. Shown on every Space and over full-screen apps.
 - **Stays out of your way**: clicks on transparent areas pass through to the app behind, and clicking Suzu never steals focus from the app you are using.
 - **Acts on her own**: idling, walking, looking around, turning away, dozing, heading to the screen edge, and more.
@@ -28,12 +28,31 @@
 - **Lightweight**: about 0.3–0.8% CPU and 75–100 MB of memory (measured on Apple Silicon, release build).
 - **Hooks for Suzu Secretary**: receives notifications, lines, and expressions from the local AI assistant "Suzu Secretary" (鈴秘書).
 
+## Install
+
+Download the installer for your OS from [Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases)
+(or from the Artifacts of the [Installers](.github/workflows/installers.yml) workflow).
+
+| OS | File | Steps |
+|---|---|---|
+| macOS | `Suzu-<version>.pkg` | Open it and follow the installer (Welcome → License → Install). Suzu.app goes into Applications and starts when the installer finishes |
+| Windows | `SuzuSetup-<version>-x64.exe` | Run it and follow the setup wizard (License → Install location → Desktop icon / start at sign-in → Install). Installs for the current user, no administrator rights needed |
+
+To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On Windows, use **Settings → Apps → Installed apps → 鈴 Suzu → Uninstall**.
+
+> The installers are not code-signed yet, so the OS may warn you the first time.
+> macOS: if the .pkg is blocked, go to **System Settings → Privacy & Security** and click **Open Anyway**.
+> Windows: if SmartScreen appears, click **More info → Run anyway**.
+
 ## Requirements
 
-- macOS 14 Sonoma or later (Apple Silicon recommended)
-- Xcode 16 or later / Swift 6 toolchain (to build)
+- macOS 14 Sonoma or later (Apple Silicon or Intel)
+- Windows 10 (version 1809 or later) / Windows 11, 64-bit (x64. Also runs on Arm through emulation)
+- To build: Xcode 16 or later / Swift 6 toolchain (macOS), .NET 8 SDK (Windows)
 
 ## Build and run
+
+### macOS
 
 ```sh
 git clone https://github.com/Lis-louis/suzu-desktop-focus.git
@@ -50,6 +69,29 @@ swift run Suzu                # launch without building the .app
 swift test                    # unit tests
 ```
 
+### Windows
+
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). Run these in PowerShell at the repository root:
+
+```powershell
+dotnet test windows\Suzu.Core.Tests        # unit tests
+dotnet run --project windows\Suzu          # launch
+```
+
+### Building the installers
+
+| Installer | Command | Output |
+|---|---|---|
+| macOS `.pkg` | `scripts/build_pkg.sh` (on a Mac) | `build/Suzu-<version>.pkg` (Universal: Apple Silicon + Intel) |
+| Windows setup `.exe` | `powershell -ExecutionPolicy Bypass -File windows\build.ps1` (on Windows, with [Inno Setup 6](https://jrsoftware.org/isdl.php)) | `build\windows\SuzuSetup-<version>-x64.exe` |
+
+The Windows `.exe` can't be built on a Mac. Pushing to GitHub runs the [Installers](.github/workflows/installers.yml) workflow,
+which builds both installers on GitHub's macOS and Windows machines and uploads them as Artifacts.
+Pushing a tag such as `v0.1.0` also attaches them to a draft release.
+The version number comes from the `VERSION` file.
+
+To sign and notarize the macOS package, set `APP_SIGN_IDENTITY`, `PKG_SIGN_IDENTITY`, and `NOTARY_PROFILE` (see the comments in `scripts/build_pkg.sh`).
+
 ## Usage
 
 | Action | Result |
@@ -58,9 +100,11 @@ swift test                    # unit tests
 | Drag Suzu | Move her anywhere. Release with momentum to throw her |
 | Double-click Suzu | Open the chat window |
 | Right-click Suzu | Menu |
-| Click the Dock icon | Open the control panel |
-| Right-click the Dock icon | Stop/start Suzu, call her |
-| ⌘Q | Quit the app |
+| Click the Dock icon (macOS) / the tray icon (Windows) | Open the control panel |
+| Right-click the Dock icon (macOS) / the tray icon (Windows) | Stop/start Suzu, call her |
+| ⌘Q (macOS) / "Quit" in the menu (Windows) | Quit the app |
+
+On Windows, Suzu's icon sits in the notification area (system tray) at the right end of the taskbar. If you don't see it, click **^** to show hidden icons.
 
 ### Control panel
 
@@ -78,10 +122,17 @@ You can change the display language (Japanese / English), her size (60–160%), 
 ## Project structure
 
 ```
-Sources/
+Sources/          macOS version (Swift)
 ├─ SuzuCore/      behavior, physics, terrain, sprite resolution (no AppKit, unit-tested)
 ├─ SuzuBridge/    interface to Suzu Secretary
 └─ SuzuApp/       rendering, mouse input, control panel, settings, chat window
+windows/          Windows version (C# / .NET 8)
+├─ Suzu.Core/     port of SuzuCore and the bridge's JSON format (no Windows APIs)
+├─ Suzu.Core.Tests/ the same unit tests as the macOS version
+├─ Suzu/          layered windows, tray icon, control panel, settings, chat window
+├─ installer/     setup wizard (Inno Setup script and images)
+└─ build.ps1      tests → Suzu.exe → setup wizard
+packaging/macos/  macOS installer (.pkg) screens and scripts
 Resources/
 ├─ Sprites/       Suzu's images (PNG) and manifest.json
 └─ AppIcon/       app icon
@@ -89,8 +140,8 @@ Tests/            unit tests
 docs/
 ├─ DESIGN.md      design document (design analysis, technology choices, feasibility, architecture)
 └─ ASSETS.md      animation assets and the list of missing ones
-tools/            tools for cutting out sprites, making the icon, and testing the bridge
-scripts/          .app build script
+tools/            tools for cutting out sprites, making icons and installer images, and testing the bridge
+scripts/          .app / .pkg build scripts
 ```
 
 See [docs/DESIGN.md](docs/DESIGN.md) for details (in Japanese).
@@ -112,10 +163,12 @@ Put a PNG in `Resources/Sprites/` and add one line to `manifest.json`, and the b
 ## Suzu Secretary integration
 
 All communication goes through the `SecretaryBridge` protocol. The current implementation is a minimal one using the local `DistributedNotificationCenter`.
+The Windows version uses named pipes that only the same user's processes can connect to (`\\.\pipe\jp.suzu.secretary.event`, one JSON event per line). The JSON format is the same.
 
 ```sh
 # Send a line to Suzu in place of Suzu Secretary
-swift tools/send_event.swift '{"type":"speak","text":"Good work today!"}'
+swift tools/send_event.swift '{"type":"speak","text":"Good work today!"}'                       # macOS
+powershell -File tools\send_event.ps1 '{"type":"speak","text":"Good work today!"}'             # Windows
 ```
 
 | type | Example | Result |
@@ -142,6 +195,7 @@ swift tools/send_event.swift '{"type":"speak","text":"Good work today!"}'
 - There is no left-facing image yet, so she moves left in her front-facing standing pose.
 - Suzu is always shown in front of normal windows (she never goes behind them).
 - Suzu cannot move other windows (that would need permission to control other apps).
+- Windows: maximized windows and always-on-top windows are not used as footholds. Settings are stored in `%APPDATA%\Suzu\settings.json`.
 
 ## Permissions
 
@@ -154,7 +208,7 @@ Code and character are licensed separately.
 
 | What | License |
 |---|---|
-| Code (`Sources/`, `Tests/`, `scripts/`, `tools/`, etc.) | [MIT License](LICENSE) |
+| Code (`Sources/`, `Tests/`, `windows/`, `packaging/`, `scripts/`, `tools/`, etc.) | [MIT License](LICENSE) |
 | The character Suzu (name, design, images, icon, character sheets) | [Character Usage Guidelines](CHARACTER_GUIDELINES.en.md) |
 
 You may draw and share non-commercial fan art of Suzu, with credit.

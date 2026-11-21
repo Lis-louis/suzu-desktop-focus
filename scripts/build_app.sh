@@ -1,10 +1,14 @@
 #!/bin/zsh
 # Suzu.app を build/ に作成する。使い方: scripts/build_app.sh [debug|release]
+#   UNIVERSAL=1 scripts/build_app.sh   # Apple Silicon / Intel 両対応（Xcode が必要）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 CONFIG=${1:-release}
-swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/Suzu"
+VERSION=$(tr -d '[:space:]' < VERSION)
+ARCH_ARGS=()
+if [[ "${UNIVERSAL:-0}" == "1" ]]; then ARCH_ARGS=(--arch arm64 --arch x86_64); fi
+swift build -c "$CONFIG" "${ARCH_ARGS[@]}"
+BIN="$(swift build -c "$CONFIG" "${ARCH_ARGS[@]}" --show-bin-path)/Suzu"
 APP=build/Suzu.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -20,7 +24,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>鈴</string>
   <key>CFBundleExecutable</key><string>Suzu</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>CFBundleIconFile</key><string>Suzu</string>

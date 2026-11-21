@@ -2,14 +2,14 @@
   <img src="docs/images/icon.png" width="128" alt="鈴 アイコン">
 </p>
 
-<h1 align="center">鈴 Suzu — macOS デスクトップマスコット</h1>
+<h1 align="center">鈴 Suzu — macOS / Windows デスクトップマスコット</h1>
 
 <p align="center">
   <a href="README.md">English</a> | <b>日本語</b>
 </p>
 
 <p align="center">
-  オリジナルキャラクター「鈴」が Mac のデスクトップで暮らすネイティブアプリ。<br>
+  オリジナルキャラクター「鈴」が Mac と Windows のデスクトップで暮らすネイティブアプリ。<br>
   歩いたり、ウィンドウの上に乗ったり、うとうとしたり、クリックに反応したりします。
 </p>
 
@@ -17,7 +17,7 @@
 
 ## 特徴
 
-- **Swift ネイティブ**：AppKit + Core Animation + SwiftUI。Electron / Web 技術は不使用
+- **それぞれの OS のネイティブアプリ**：macOS は Swift（AppKit + Core Animation + SwiftUI）、Windows は C# / .NET 8（WinForms + Win32 のレイヤードウィンドウ）。Electron / Web 技術は不使用
 - **デスクトップに常駐**：枠なし・背景透過。すべての操作スペース・フルスクリーンの上に表示
 - **作業の邪魔をしない**：透明部分のクリックは後ろのアプリへ通り、鈴をクリックしてもフォーカスを奪わない
 - **自律行動**：待機・散歩・見回す・振り返る・うとうと・画面の端へ行く など。
@@ -28,12 +28,30 @@
 - **軽量**：CPU 0.3〜0.8%、メモリ 約 75〜100MB（Apple Silicon・release ビルドでの実測）
 - **鈴秘書との連携口**：ローカル AI 秘書「鈴秘書」から通知・セリフ・表情を受け取れる
 
+## インストール
+
+[Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases)（または [Installers](.github/workflows/installers.yml) ワークフローの Artifacts）から、お使いの OS のインストーラーをダウンロードしてください。
+
+| OS | ファイル | 手順 |
+|---|---|---|
+| macOS | `Suzu-<バージョン>.pkg` | 開いてインストーラーの案内に従う（ようこそ → 使用許諾 → インストール）。「アプリケーション」に Suzu.app が入り、完了すると鈴が起動します |
+| Windows | `SuzuSetup-<バージョン>-x64.exe` | 実行してセットアップウィザードの案内に従う（使用許諾 → インストール先 → デスクトップアイコン・サインイン時の起動 → インストール）。自分のユーザー用にインストールするので管理者権限は不要です |
+
+アンインストール：macOS は鈴を終了して「アプリケーション」の Suzu をゴミ箱へ。Windows は **設定 → アプリ → インストールされているアプリ → 鈴 Suzu → アンインストール**。
+
+> インストーラーはまだコード署名していないため、初回に OS の警告が出ることがあります。
+> macOS：.pkg が開けないときは **システム設定 → プライバシーとセキュリティ** で「このまま開く」をクリック。
+> Windows：SmartScreen が出たときは **詳細情報 → 実行** をクリック。
+
 ## 動作環境
 
-- macOS 14 Sonoma 以降（Apple Silicon 推奨）
-- Xcode 16 以降 / Swift 6 ツールチェーン（ビルドする場合）
+- macOS 14 Sonoma 以降（Apple Silicon・Intel）
+- Windows 10（バージョン 1809 以降）/ Windows 11 の 64 ビット版（x64。Arm 版でもエミュレーションで動作）
+- ビルドする場合：Xcode 16 以降 / Swift 6 ツールチェーン（macOS）、.NET 8 SDK（Windows）
 
 ## ビルドと起動
+
+### macOS
 
 ```sh
 git clone https://github.com/Lis-louis/suzu-desktop-focus.git
@@ -50,6 +68,29 @@ swift run Suzu                # .app を作らずに起動
 swift test                    # 単体テスト
 ```
 
+### Windows
+
+[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) が必要です。リポジトリ直下の PowerShell で：
+
+```powershell
+dotnet test windows\Suzu.Core.Tests        # 単体テスト
+dotnet run --project windows\Suzu          # 起動
+```
+
+### インストーラーの作成
+
+| インストーラー | コマンド | できるもの |
+|---|---|---|
+| macOS `.pkg` | `scripts/build_pkg.sh`（Mac で） | `build/Suzu-<バージョン>.pkg`（Apple Silicon・Intel 両対応） |
+| Windows セットアップ `.exe` | `powershell -ExecutionPolicy Bypass -File windows\build.ps1`（Windows で。[Inno Setup 6](https://jrsoftware.org/isdl.php) が必要） | `build\windows\SuzuSetup-<バージョン>-x64.exe` |
+
+Windows の `.exe` は Mac では作れません。GitHub に push すると [Installers](.github/workflows/installers.yml) ワークフローが
+GitHub の macOS・Windows マシンで両方のインストーラーを作り、Artifacts に置きます。
+`v0.1.0` のようなタグを push すると、下書きのリリースにも添付されます。
+バージョン番号は `VERSION` ファイルで管理しています。
+
+macOS のパッケージを署名・公証する場合は `APP_SIGN_IDENTITY`・`PKG_SIGN_IDENTITY`・`NOTARY_PROFILE` を設定してください（`scripts/build_pkg.sh` の先頭のコメント参照）。
+
 ## 使い方
 
 | 操作 | 内容 |
@@ -58,9 +99,11 @@ swift test                    # 単体テスト
 | 鈴をドラッグ | 好きな場所へ移動。勢いよく離すと放り投げる |
 | 鈴をダブルクリック | 会話画面を開く |
 | 鈴を右クリック | メニュー |
-| Dock のアイコンをクリック | コントロールパネルを開く |
-| Dock のアイコンを右クリック | 鈴を止める／起動する・呼ぶ |
-| ⌘Q | アプリを終了 |
+| Dock のアイコン（macOS）／通知領域のアイコン（Windows）をクリック | コントロールパネルを開く |
+| Dock のアイコン（macOS）／通知領域のアイコン（Windows）を右クリック | 鈴を止める／起動する・呼ぶ |
+| ⌘Q（macOS）／メニューの「終了」（Windows） | アプリを終了 |
+
+Windows では、タスクバー右端の通知領域に鈴のアイコンが出ます。見当たらないときは **^**（隠れているインジケーターを表示）をクリックしてください。
 
 ### コントロールパネル
 
@@ -76,10 +119,17 @@ swift test                    # 単体テスト
 ## プロジェクト構成
 
 ```
-Sources/
+Sources/          macOS 版（Swift）
 ├─ SuzuCore/      行動・物理・地形・スプライト解決（AppKit 非依存・テスト対象）
 ├─ SuzuBridge/    鈴秘書との連携インターフェース
 └─ SuzuApp/       画面表示・マウス操作・コントロールパネル・設定・会話画面
+windows/          Windows 版（C# / .NET 8）
+├─ Suzu.Core/     SuzuCore と連携 JSON の移植（Windows API 非依存）
+├─ Suzu.Core.Tests/ macOS 版と同じ内容の単体テスト
+├─ Suzu/          透過ウィンドウ・通知領域アイコン・コントロールパネル・設定・会話画面
+├─ installer/     セットアップウィザード（Inno Setup のスクリプトと画像）
+└─ build.ps1      テスト → Suzu.exe → セットアップウィザードの作成
+packaging/macos/  macOS 用インストーラー（.pkg）の画面とスクリプト
 Resources/
 ├─ Sprites/       鈴の画像（PNG）と manifest.json
 └─ AppIcon/       アプリアイコン
@@ -87,8 +137,8 @@ Tests/            単体テスト
 docs/
 ├─ DESIGN.md      設計書（デザイン分析・技術選定・実現可能性・アーキテクチャ）
 └─ ASSETS.md      アニメーション素材の一覧と不足素材
-tools/            素材の切り出し・アイコン作成・連携テスト用ツール
-scripts/          .app のビルドスクリプト
+tools/            素材の切り出し・アイコンやインストーラー画像の作成・連携テスト用ツール
+scripts/          .app / .pkg のビルドスクリプト
 ```
 
 詳しくは [docs/DESIGN.md](docs/DESIGN.md) を参照してください。
@@ -110,10 +160,12 @@ scripts/          .app のビルドスクリプト
 ## 鈴秘書との連携
 
 `SecretaryBridge` プロトコルを通してやり取りします。現在はローカルの `DistributedNotificationCenter` を使った最小実装です。
+Windows 版は、同じユーザーのプロセスからだけ接続できる名前付きパイプ（`\\.\pipe\jp.suzu.secretary.event`、1 行に 1 イベントの JSON）を使います。JSON の形式は同じです。
 
 ```sh
 # 鈴秘書の代わりにセリフを送る
-swift tools/send_event.swift '{"type":"speak","text":"おつかれさま！"}'
+swift tools/send_event.swift '{"type":"speak","text":"おつかれさま！"}'                  # macOS
+powershell -File tools\send_event.ps1 '{"type":"speak","text":"おつかれさま！"}'        # Windows
 ```
 
 | type | 例 | 動作 |
@@ -140,6 +192,7 @@ swift tools/send_event.swift '{"type":"speak","text":"おつかれさま！"}'
 - 左向きの素材がないため、左へ歩くときは正面の立ち姿のまま移動する
 - 鈴は常に通常のウィンドウより手前に表示される（ウィンドウの裏に回る表現はしない）
 - ウィンドウを鈴が動かす機能はない（他のアプリを操作する権限が必要になるため）
+- Windows：最大化したウィンドウと「常に手前に表示」のウィンドウは足場にしない。設定は `%APPDATA%\Suzu\settings.json` に保存
 
 ## 権限について
 
@@ -152,7 +205,7 @@ swift tools/send_event.swift '{"type":"speak","text":"おつかれさま！"}'
 
 | 対象 | ライセンス |
 |---|---|
-| プログラム（`Sources/`、`Tests/`、`scripts/`、`tools/` など） | [MIT License](LICENSE) |
+| プログラム（`Sources/`、`Tests/`、`windows/`、`packaging/`、`scripts/`、`tools/` など） | [MIT License](LICENSE) |
 | キャラクター「鈴」（名前・デザイン・画像・アイコン・設定資料） | [キャラクター利用ガイドライン](CHARACTER_GUIDELINES.md) |
 
 鈴のファンアートは、クレジット表記をすれば非営利で自由に描いて公開できます。
