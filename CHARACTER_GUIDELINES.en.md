@@ -22,7 +22,7 @@ The following are called "Suzu assets" in these guidelines:
 - The name, appearance, and design of the character "Suzu" (鈴), including her outfit, hairstyle, hair ornament, colors, and expressions
 - The images in `Resources/Sprites/`
 - The icon images in `Resources/AppIcon/` and `docs/images/`
-- The character sheets in `鈴の画像です。これを作って欲しいです/`
+- The character sheets in `suzu photo/`
 - Any images made from the above (including cropped, resized, or edited versions)
 
 All copyrights and other rights to Suzu assets belong to Lis-louis.

@@ -177,7 +177,7 @@ See [docs/DESIGN.md](docs/DESIGN.md) for details (in Japanese).
 
 ## Character design and image assets
 
-Suzu's design reference is the two character sheets in `鈴の画像です。これを作って欲しいです/`.
+Suzu's design reference is the two character sheets in `suzu photo/`.
 The rule is **never to change her outfit, hairstyle, hair ornament, or colors** from those sheets.
 
 For now, the only images are three poses cut out from the sheets (front, facing right, back).
