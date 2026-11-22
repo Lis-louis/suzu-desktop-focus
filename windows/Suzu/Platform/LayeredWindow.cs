@@ -67,6 +67,25 @@ internal class LayeredWindow : Form
     /// <summary>true にするとすべてのマウス操作を背面へ通す（吹き出し用）</summary>
     protected virtual bool ClickThrough => false;
 
+    private bool _keepOnTop = true;
+
+    /// <summary>ほかのウィンドウより手前に表示し続けるか</summary>
+    public bool KeepOnTop
+    {
+        get => _keepOnTop;
+        set
+        {
+            if (_keepOnTop == value) return;
+            _keepOnTop = value;
+            if (IsHandleCreated)
+                Native.SetWindowPos(Handle, value ? Native.HWND_TOPMOST : Native.HWND_NOTOPMOST, 0, 0, 0, 0,
+                                    Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        }
+    }
+
+    /// <summary>ウィンドウ全体の不透明度（0〜255）。次の Present から反映される。</summary>
+    public byte Alpha { get; set; } = 255;
+
     public LayeredWindow()
     {
         FormBorderStyle = FormBorderStyle.None;
@@ -83,7 +102,8 @@ internal class LayeredWindow : Form
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE | Native.WS_EX_TOPMOST;
+            cp.ExStyle |= Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE;
+            if (_keepOnTop) cp.ExStyle |= Native.WS_EX_TOPMOST; else cp.ExStyle &= ~Native.WS_EX_TOPMOST;
             if (ClickThrough) cp.ExStyle |= Native.WS_EX_TRANSPARENT;
             return cp;
         }
@@ -116,17 +136,20 @@ internal class LayeredWindow : Form
         var src = new Native.POINT(0, 0);
         var blend = new Native.BLENDFUNCTION
         {
-            BlendOp = Native.AC_SRC_OVER, BlendFlags = 0, SourceConstantAlpha = 255, AlphaFormat = Native.AC_SRC_ALPHA,
+            BlendOp = Native.AC_SRC_OVER, BlendFlags = 0, SourceConstantAlpha = Alpha, AlphaFormat = Native.AC_SRC_ALPHA,
         };
         var screen = Native.GetDC(IntPtr.Zero);
         try { Native.UpdateLayeredWindow(Handle, screen, ref dst, ref size, surface.Hdc, ref src, 0, ref blend, Native.ULW_ALPHA); }
         finally { Native.ReleaseDC(IntPtr.Zero, screen); }
     }
 
-    /// <summary>位置だけを動かす（描画し直さない）。最前面も維持する。</summary>
+    /// <summary>位置だけを動かす（描画し直さない）。最前面表示のときはそれも維持する。</summary>
     public void MoveTo(int left, int top)
     {
         if (!IsHandleCreated) return;
-        Native.SetWindowPos(Handle, Native.HWND_TOPMOST, left, top, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        if (_keepOnTop)
+            Native.SetWindowPos(Handle, Native.HWND_TOPMOST, left, top, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        else
+            Native.SetWindowPos(Handle, IntPtr.Zero, left, top, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_NOZORDER);
     }
 }

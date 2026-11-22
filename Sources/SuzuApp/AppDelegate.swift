@@ -16,7 +16,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     private let bridge: SecretaryBridge = DistributedNotificationBridge()
     private let conversation = ConversationModel()
 
-    private var frameTimer: Timer?
+    /// モニターのリフレッシュに合わせて呼ばれる（鈴のいる画面に自動で追従する）
+    private var displayLink: CADisplayLink?
+    private var framesSinceMeasure = 0
+    private var lastMeasure = CACurrentMediaTime()
     private var terrainTimer: Timer?
     private var lastTick = CACurrentMediaTime()
     private var lastSave = CACurrentMediaTime()
@@ -38,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         config.bodyHeight = settings.bodyHeight
         config.bodyWidth = settings.bodyHeight * 0.38
         config.paused = settings.paused
+        config.walkSpeed = 42 * settings.moveSpeed
+        config.climbSpeed = 28 * settings.moveSpeed
         config.allowPlaceholders = settings.allowPlaceholders
         sim = MascotSimulation(config: config, catalog: SpriteCatalog(manifest: sprites.manifest, allowMirroring: settings.allowMirroring))
 
@@ -46,6 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         view.bodyHeight = settings.bodyHeight
         view.delegate = self
         panel.contentView = view
+        applyWindowAppearance()
+        applyFrameRate()
 
         sensor.interactWithWindows = settings.interactWithWindows
         sensor.headroom = settings.bodyHeight + 20
@@ -138,12 +145,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     // MARK: - ループ
 
     private func startTimers() {
-        guard frameTimer == nil else { return }
+        guard displayLink == nil else { return }
         lastTick = CACurrentMediaTime()
-        let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
-        t.tolerance = 0.005
-        RunLoop.main.add(t, forMode: .common)
-        frameTimer = t
+        lastMeasure = lastTick
+        framesSinceMeasure = 0
+        let link = view.displayLink(target: self, selector: #selector(displayTick(_:)))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+        applyFrameRate()
         let e = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.refreshTerrain() }
         e.tolerance = 0.2
         RunLoop.main.add(e, forMode: .common)
@@ -151,12 +160,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     }
 
     private func stopTimers() {
-        frameTimer?.invalidate(); frameTimer = nil
+        displayLink?.invalidate(); displayLink = nil
         terrainTimer?.invalidate(); terrainTimer = nil
+    }
+
+    @objc private func displayTick(_ link: CADisplayLink) { tick() }
+
+    /// 鈴のいるモニターのリフレッシュレート
+    private var currentRefreshRate: Int {
+        max(1, (panel.screen ?? NSScreen.main)?.maximumFramesPerSecond ?? 60)
+    }
+
+    /// 設定の上限とモニターのリフレッシュレートから描画回数を決める
+    private func applyFrameRate() {
+        let hz = Float(currentRefreshRate)
+        let target = settings.frameRate > 0 ? min(Float(settings.frameRate), hz) : hz
+        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: min(30, target), maximum: target, preferred: target)
+        status.refreshRate = Int(hz)
+        status.maxRefreshRate = NSScreen.screens.map(\.maximumFramesPerSecond).max() ?? Int(hz)
+    }
+
+    /// 1 秒ごと：実際の fps を測り、モニターが変わっていればフレームレートを合わせ直す
+    private func measureFrameRate() {
+        let now = CACurrentMediaTime()
+        let elapsed = now - lastMeasure
+        if elapsed > 0 {
+            let fps = Int((Double(framesSinceMeasure) / elapsed).rounded())
+            if status.settingsVisible, status.measuredFPS != fps { status.measuredFPS = fps }
+        }
+        framesSinceMeasure = 0
+        lastMeasure = now
+        if currentRefreshRate != status.refreshRate { applyFrameRate() }
     }
 
     private func tick() {
         let now = CACurrentMediaTime()
+        framesSinceMeasure += 1
         let dt = now - lastTick
         lastTick = now
         animationClock += dt
@@ -168,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
 
     private func refreshTerrain() {
         if controlWindow?.isVisible == true { updateStatusText() }
+        if displayLink != nil { measureFrameRate() }
         if sim.motion == .dragged { return }
         sim.updateTerrain(sensor.terrain())
     }
@@ -198,11 +238,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         settings.$paused.dropFirst().sink { [weak self] v in self?.sim.config.paused = v; self?.rebuildMenu() }.store(in: &cancellables)
         settings.$allowPlaceholders.dropFirst().sink { [weak self] v in self?.sim.config.allowPlaceholders = v }.store(in: &cancellables)
         settings.$allowMirroring.dropFirst().sink { [weak self] v in self?.sim.catalog.allowMirroring = v }.store(in: &cancellables)
+        settings.$opacity.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.applyWindowAppearance() } }.store(in: &cancellables)
+        settings.$alwaysOnTop.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.applyWindowAppearance(); self?.rebuildMenu() } }.store(in: &cancellables)
+        settings.$moveSpeed.dropFirst().sink { [weak self] v in
+            self?.sim.config.walkSpeed = 42 * v
+            self?.sim.config.climbSpeed = 28 * v
+        }.store(in: &cancellables)
+        settings.$frameRate.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.applyFrameRate() } }.store(in: &cancellables)
         settings.$language.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.applyLanguage() } }.store(in: &cancellables)
         settings.$interactWithWindows.dropFirst().sink { [weak self] v in
             self?.sensor.interactWithWindows = v
             DispatchQueue.main.async { self?.refreshTerrain() }
         }.store(in: &cancellables)
+    }
+
+    /// 不透明度・最前面表示を反映する（吹き出しは読みやすさのため常に不透明）
+    private func applyWindowAppearance() {
+        panel.alphaValue = CGFloat(settings.opacity)
+        panel.level = settings.alwaysOnTop ? .floating : .normal
     }
 
     private func applyScale() {
@@ -215,12 +268,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         view.frame = NSRect(origin: .zero, size: windowSize())
         refreshTerrain()
         render()
+        rebuildMenu()
     }
 
     private func observeSystem() {
         let nc = NotificationCenter.default
         nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             self?.refreshTerrain()
+            self?.applyFrameRate()
         }
         let ws = NSWorkspace.shared.notificationCenter
         // 画面スリープ中は計算を止めて CPU を使わない
@@ -282,6 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     func mascotDragged(feetAt p: CGPoint) { sim.drag(to: p); render() }
     func mascotDragEnded(velocity: CGVector) { sim.endDrag(velocity: velocity) }
     func mascotMenu() -> NSMenu { makeMenu() }
+    func mascotResize(steps: Int) { settings.adjustScale(by: steps) }
 
     // MARK: - メニュー・ウィンドウ
 
@@ -347,6 +403,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         let pause = m.addItem(withTitle: L.pick("自律行動を一時停止", "Pause Autonomous Behavior"), action: #selector(togglePause), keyEquivalent: "")
         pause.target = self
         pause.state = settings.paused ? .on : .off
+        m.addItem(makeSizeMenuItem())
+        let top = m.addItem(withTitle: L.pick("ほかのウィンドウより手前に表示", "Keep Above Other Windows"), action: #selector(toggleAlwaysOnTop), keyEquivalent: "")
+        top.target = self
+        top.state = settings.alwaysOnTop ? .on : .off
         m.addItem(.separator())
         m.addItem(withTitle: L.pick("鈴と話す…", "Chat with Suzu…"), action: #selector(openConversation), keyEquivalent: "").target = self
         m.addItem(withTitle: L.pick("設定…", "Settings…"), action: #selector(openSettings), keyEquivalent: ",").target = self
@@ -367,6 +427,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     }
 
     @objc private func togglePause() { settings.paused.toggle() }
+    @objc private func toggleAlwaysOnTop() { settings.alwaysOnTop.toggle() }
+
+    /// 「大きさ」サブメニュー（よく使う大きさ＋1 段階ずつの調整）
+    private func makeSizeMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: L.pick("大きさ（\(Int((settings.scale * 100).rounded()))%）", "Size (\(Int((settings.scale * 100).rounded()))%)"), action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        let larger = sub.addItem(withTitle: L.pick("大きくする", "Larger"), action: #selector(scaleUp), keyEquivalent: "")
+        larger.target = self
+        larger.isEnabled = settings.scale < AppSettings.scaleRange.upperBound
+        let smaller = sub.addItem(withTitle: L.pick("小さくする", "Smaller"), action: #selector(scaleDown), keyEquivalent: "")
+        smaller.target = self
+        smaller.isEnabled = settings.scale > AppSettings.scaleRange.lowerBound
+        sub.addItem(.separator())
+        for preset in AppSettings.scalePresets {
+            let title = "\(Int(preset * 100))%" + (preset == 1.0 ? L.pick("（標準）", " (standard)") : "")
+            let p = sub.addItem(withTitle: title, action: #selector(setScalePreset(_:)), keyEquivalent: "")
+            p.target = self
+            p.representedObject = preset
+            p.state = abs(settings.scale - preset) < 0.001 ? .on : .off
+        }
+        sub.autoenablesItems = false
+        item.submenu = sub
+        return item
+    }
+
+    @objc private func scaleUp() { settings.adjustScale(by: 1) }
+    @objc private func scaleDown() { settings.adjustScale(by: -1) }
+    @objc private func setScalePreset(_ sender: NSMenuItem) {
+        if let v = sender.representedObject as? Double { settings.scale = v }
+    }
 
     @objc private func openControlPanel() {
         if controlWindow == nil {
@@ -392,7 +482,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     @objc private func openSettings() {
         if settingsWindow == nil {
             let missing = sim.catalog.missingPoses().map { "\($0.0.rawValue)/\($0.1.rawValue)" }
-            let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, missingAssets: missing)))
+            let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, status: status, missingAssets: missing)))
             w.title = L.pick("鈴の設定", "Suzu Settings")
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false

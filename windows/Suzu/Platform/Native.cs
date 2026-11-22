@@ -19,8 +19,10 @@ internal static class Native
 
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOMOVE = 0x0002;
+    public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_NOACTIVATE = 0x0010;
     public static readonly IntPtr HWND_TOPMOST = new(-1);
+    public static readonly IntPtr HWND_NOTOPMOST = new(-2);
 
     public const int ULW_ALPHA = 0x02;
     public const byte AC_SRC_OVER = 0x00;
@@ -78,6 +80,13 @@ internal static class Native
 
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out RECT value, int size);
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int value, int size);
+    /// <summary>次の画面合成（＝モニターのリフレッシュ）まで待つ。成功なら 0。</summary>
+    [DllImport("dwmapi.dll")] public static extern int DwmFlush();
+
+    [DllImport("gdi32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr CreateDC(string? driver, string? device, string? output, IntPtr initData);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int index);
+    public const int VREFRESH = 116;
 
     [DllImport("gdi32.dll", SetLastError = true)] public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
     [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr hdc);
@@ -85,6 +94,24 @@ internal static class Native
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
     [DllImport("gdi32.dll", SetLastError = true)]
     public static extern IntPtr CreateDIBSection(IntPtr hdc, ref BITMAPINFOHEADER bmi, uint usage, out IntPtr bits, IntPtr section, uint offset);
+
+    /// <summary>モニターのリフレッシュレート（Hz）。取得できなければ 60。</summary>
+    public static int RefreshRateOf(Screen screen)
+    {
+        try
+        {
+            var dc = CreateDC(screen.DeviceName, null, null, IntPtr.Zero);
+            if (dc == IntPtr.Zero) return 60;
+            try
+            {
+                int hz = GetDeviceCaps(dc, VREFRESH);
+                return hz > 1 ? hz : 60; // 0・1 は「ハードウェアの既定値」の意味
+            }
+            finally { DeleteDC(dc); }
+        }
+        catch (DllNotFoundException) { return 60; }
+        catch (EntryPointNotFoundException) { return 60; }
+    }
 
     /// <summary>画面上の点（物理ピクセル）があるモニターの表示倍率（1.0 = 100%）</summary>
     public static double DpiScaleAt(int x, int y)

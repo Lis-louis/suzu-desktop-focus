@@ -8,6 +8,12 @@ internal sealed class MascotStatus
     public bool Running { get; set; } = true;
     public string ActivityText { get; set; } = "";
     public bool BridgeConnected { get; set; }
+    /// <summary>鈴のいるモニターのリフレッシュレート（Hz）</summary>
+    public int RefreshRate { get; set; } = 60;
+    /// <summary>つながっているモニターの中で最も高いリフレッシュレート（Hz）</summary>
+    public int MaxRefreshRate { get; set; } = 60;
+    /// <summary>実際に描画できている回数（1 秒あたり）</summary>
+    public int MeasuredFps { get; set; }
     public event Action? Changed;
     public void NotifyChanged() => Changed?.Invoke();
 }
@@ -47,6 +53,63 @@ internal class SuzuForm : Form
     {
         AutoSize = false, Height = 1, Dock = DockStyle.Fill, BackColor = Color.FromArgb(225, 225, 225), Margin = new Padding(0, 8, 0, 8),
     };
+}
+
+/// <summary>大きさの行（ラベル・－・スライダー・＋・％）。設定画面とコントロールパネルで共通。</summary>
+internal sealed class ScaleRow : FlowLayoutPanel
+{
+    private readonly AppSettings _settings;
+    private readonly Label _label = new() { AutoSize = true, ForeColor = Color.FromArgb(90, 90, 90), Margin = new Padding(0, 8, 6, 0) };
+    private readonly Button _smaller = new() { Text = "−", Width = 28, Height = 26, Margin = new Padding(0, 3, 0, 0) };
+    private readonly TrackBar _track = new()
+    {
+        Minimum = (int)Math.Round(AppSettings.MinScale / AppSettings.ScaleStep),
+        Maximum = (int)Math.Round(AppSettings.MaxScale / AppSettings.ScaleStep),
+        TickFrequency = 4, SmallChange = 1, LargeChange = 5, AutoSize = false, Height = 32,
+    };
+    private readonly Button _larger = new() { Text = "+", Width = 28, Height = 26, Margin = new Padding(0, 3, 0, 0) };
+    private readonly Label _value = new() { AutoSize = true, ForeColor = Color.FromArgb(90, 90, 90), Margin = new Padding(6, 8, 0, 0) };
+    private readonly ToolTip _tip = new();
+    private bool _updating;
+
+    public ScaleRow(AppSettings settings, int trackWidth)
+    {
+        _settings = settings;
+        AutoSize = true;
+        WrapContents = false;
+        Margin = Padding.Empty;
+        _track.Width = trackWidth;
+        Controls.AddRange(new Control[] {_label, _smaller, _track, _larger, _value});
+        _track.ValueChanged += (_, _) => { if (!_updating) _settings.Scale = _track.Value * AppSettings.ScaleStep; };
+        _smaller.Click += (_, _) => _settings.AdjustScale(-1);
+        _larger.Click += (_, _) => _settings.AdjustScale(1);
+        _value.DoubleClick += (_, _) => _settings.Scale = 1.0;
+        _settings.Changed += OnSettingsChanged;
+        UpdateTexts();
+    }
+
+    private void OnSettingsChanged(string _) { if (!IsDisposed) UpdateTexts(); }
+
+    public void UpdateTexts()
+    {
+        var L = _settings.Language;
+        _updating = true;
+        _label.Text = L.Pick("大きさ", "Size");
+        _track.Value = Math.Clamp((int)Math.Round(_settings.Scale / AppSettings.ScaleStep), _track.Minimum, _track.Maximum);
+        _value.Text = $"{(int)Math.Round(_settings.Scale * 100)}%";
+        _smaller.Enabled = _settings.Scale > AppSettings.MinScale;
+        _larger.Enabled = _settings.Scale < AppSettings.MaxScale;
+        _tip.SetToolTip(_smaller, L.Pick("小さくする", "Smaller"));
+        _tip.SetToolTip(_larger, L.Pick("大きくする", "Larger"));
+        _tip.SetToolTip(_value, L.Pick("ダブルクリックで標準の大きさ（100%）に戻す", "Double-click to reset to the standard size (100%)"));
+        _updating = false;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { _settings.Changed -= OnSettingsChanged; _tip.Dispose(); }
+        base.Dispose(disposing);
+    }
 }
 
 /// <summary>鈴の起動・停止などをまとめた操作画面</summary>
@@ -102,7 +165,8 @@ internal sealed class ControlPanelForm : SuzuForm
         footer.Controls.Add(_bridge, 0, 0);
         footer.Controls.Add(_quit, 1, 0);
 
-        col.Controls.AddRange(new Control[] {header, _now, _toggle, buttons, Divider(), _pause, _login, _showOnLaunch, Divider(), footer});
+        var scaleRow = new ScaleRow(settings, 200);
+        col.Controls.AddRange(new Control[] {header, _now, _toggle, buttons, Divider(), scaleRow, _pause, _login, _showOnLaunch, Divider(), footer});
         Controls.Add(col);
 
         _toggle.Click += (_, _) => onToggleRunning();
@@ -174,13 +238,24 @@ internal sealed class ControlPanelForm : SuzuForm
 internal sealed class SettingsForm : SuzuForm
 {
     private readonly AppSettings _settings;
+    private readonly MascotStatus _status;
+    private readonly Label _fpsLabel = MakeLabel();
+    private readonly ComboBox _fps = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220 };
+    private readonly Label _fpsNow = MakeLabel();
+    private List<int> _fpsValues = new();
     private readonly List<string> _missingAssets;
     private readonly Label _langHeader = MakeLabel(9.5f, FontStyle.Bold, Theme.Navy);
     private readonly ComboBox _language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160 };
     private readonly Label _appearanceHeader = MakeLabel(9.5f, FontStyle.Bold, Theme.Navy);
-    private readonly Label _sizeLabel = MakeLabel();
-    private readonly TrackBar _size = new() { Minimum = 6, Maximum = 16, TickFrequency = 1, SmallChange = 1, LargeChange = 2, Width = 240, AutoSize = false, Height = 32 };
-    private readonly Label _sizeValue = MakeLabel();
+    private readonly Label _opacityLabel = MakeLabel();
+    private readonly TrackBar _opacity = new() { Minimum = 6, Maximum = 20, TickFrequency = 2, SmallChange = 1, LargeChange = 2, Width = 240, AutoSize = false, Height = 32 };
+    private readonly Label _opacityValue = MakeLabel();
+    private readonly CheckBox _onTop = MakeCheck();
+    private readonly Label _sizeNote = MakeLabel(8.5f);
+    private readonly Label _speedLabel = MakeLabel();
+    private readonly TrackBar _speed = new() { Minimum = 5, Maximum = 20, TickFrequency = 5, SmallChange = 1, LargeChange = 5, Width = 240, AutoSize = false, Height = 32 };
+    private readonly Label _speedValue = MakeLabel();
+    private readonly Button _reset = new() { AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(0, 4, 0, 0) };
     private readonly Label _behaviorHeader = MakeLabel(9.5f, FontStyle.Bold, Theme.Navy);
     private readonly CheckBox _interact = MakeCheck();
     private readonly CheckBox _pause = MakeCheck();
@@ -194,9 +269,10 @@ internal sealed class SettingsForm : SuzuForm
     private readonly TextBox _missing = new() { ReadOnly = true, Multiline = true, BorderStyle = BorderStyle.None, BackColor = Color.White, Width = 420, Height = 48, ForeColor = Color.Gray };
     private bool _updating;
 
-    public SettingsForm(AppSettings settings, List<string> missingAssets)
+    public SettingsForm(AppSettings settings, MascotStatus status, List<string> missingAssets)
     {
         _settings = settings;
+        _status = status;
         _missingAssets = missingAssets;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -207,25 +283,38 @@ internal sealed class SettingsForm : SuzuForm
         _language.Items.AddRange(new object[] { AppLanguage.Ja.DisplayName(), AppLanguage.En.DisplayName() });
         _tempNote.MaximumSize = new Size(420, 0);
 
-        var sizeRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
-        _sizeLabel.Margin = new Padding(0, 8, 6, 0);
-        _sizeValue.Margin = new Padding(6, 8, 0, 0);
-        sizeRow.Controls.AddRange(new Control[] {_sizeLabel, _size, _sizeValue});
+        var sizeRow = new ScaleRow(settings, 240);
+        _sizeNote.MaximumSize = new Size(420, 0);
+        var opacityRow = SliderRow(_opacityLabel, _opacity, _opacityValue);
+        var speedRow = SliderRow(_speedLabel, _speed, _speedValue);
+        var fpsRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 4, 0, 0) };
+        _fpsLabel.Margin = new Padding(0, 6, 6, 0);
+        _fpsNow.Margin = new Padding(8, 6, 0, 0);
+        fpsRow.Controls.AddRange(new Control[] {_fpsLabel, _fps, _fpsNow});
 
         var col = MakeColumn();
         col.MinimumSize = new Size(460, 0);
         col.Controls.AddRange(new Control[] {
             _langHeader, _language, Divider(),
-            _appearanceHeader, sizeRow, Divider(),
-            _behaviorHeader, _interact, _pause, Divider(),
+            _appearanceHeader, sizeRow, opacityRow, _onTop, fpsRow, _sizeNote, Divider(),
+            _behaviorHeader, _interact, _pause, speedRow, Divider(),
             _tempHeader, _mirror, _placeholders, _tempNote, Divider(),
-            _startupHeader, _login,
+            _startupHeader, _login, Divider(),
+            _reset,
         });
         if (_missingAssets.Count > 0) col.Controls.AddRange(new Control[] {Divider(), _missingHeader, _missing});
         Controls.Add(col);
 
         _language.SelectedIndexChanged += (_, _) => { if (!_updating) _settings.Language = _language.SelectedIndex == 1 ? AppLanguage.En : AppLanguage.Ja; };
-        _size.ValueChanged += (_, _) => { if (!_updating) _settings.Scale = _size.Value / 10.0; };
+        _opacity.ValueChanged += (_, _) => { if (!_updating) _settings.Opacity = _opacity.Value / 20.0; };
+        _onTop.CheckedChanged += (_, _) => { if (!_updating) _settings.AlwaysOnTop = _onTop.Checked; };
+        _speed.ValueChanged += (_, _) => { if (!_updating) _settings.MoveSpeed = _speed.Value / 10.0; };
+        _reset.Click += (_, _) => _settings.ResetToDefaults();
+        _fps.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_updating && _fps.SelectedIndex >= 0 && _fps.SelectedIndex < _fpsValues.Count) _settings.FrameRate = _fpsValues[_fps.SelectedIndex];
+        };
+        _status.Changed += OnStatusChanged;
         _interact.CheckedChanged += (_, _) => { if (!_updating) _settings.InteractWithWindows = _interact.Checked; };
         _pause.CheckedChanged += (_, _) => { if (!_updating) _settings.Paused = _pause.Checked; };
         _mirror.CheckedChanged += (_, _) => { if (!_updating) _settings.AllowMirroring = _mirror.Checked; };
@@ -236,7 +325,42 @@ internal sealed class SettingsForm : SuzuForm
         UpdateTexts();
     }
 
+    private static FlowLayoutPanel SliderRow(Label label, TrackBar track, Label value)
+    {
+        var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+        label.Margin = new Padding(0, 8, 6, 0);
+        value.Margin = new Padding(6, 8, 0, 0);
+        row.Controls.AddRange(new Control[] {label, track, value});
+        return row;
+    }
+
     private void OnSettingsChanged(string _) { if (!IsDisposed) UpdateTexts(); }
+
+    private void OnStatusChanged()
+    {
+        if (IsDisposed || !Visible) return;
+        var values = FrameRateValues();
+        if (!values.SequenceEqual(_fpsValues)) { UpdateTexts(); return; }
+        UpdateFpsNow();
+    }
+
+    /// <summary>0（モニターに合わせる）＋モニターの上限までの選択肢。保存済みの値は上限を超えていても残す。</summary>
+    private List<int> FrameRateValues()
+    {
+        int limit = Math.Max(60, _status.MaxRefreshRate);
+        var list = AppSettings.FrameRateChoices.Where(v => v <= limit).ToList();
+        if (_settings.FrameRate > 0 && !list.Contains(_settings.FrameRate)) { list.Add(_settings.FrameRate); list.Sort(); }
+        list.Insert(0, 0);
+        return list;
+    }
+
+    private void UpdateFpsNow()
+    {
+        var L = _settings.Language;
+        _fpsNow.Text = _status.Running
+            ? L.Pick($"いまの表示：{_status.MeasuredFps} fps", $"Currently: {_status.MeasuredFps} fps")
+            : L.Pick("いまの表示：停止中", "Currently: stopped");
+    }
 
     public void UpdateTexts()
     {
@@ -244,12 +368,27 @@ internal sealed class SettingsForm : SuzuForm
         _updating = true;
         SuspendLayout();
         Text = L.Pick("鈴の設定", "Suzu Settings");
+        _fpsLabel.Text = L.Pick("フレームレート", "Frame rate");
+        _fpsValues = FrameRateValues();
+        _fps.Items.Clear();
+        foreach (var v in _fpsValues)
+            _fps.Items.Add(v == 0 ? L.Pick($"モニターに合わせる（{_status.RefreshRate}Hz）", $"Match monitor ({_status.RefreshRate} Hz)") : $"{v} fps");
+        _fps.SelectedIndex = Math.Max(0, _fpsValues.IndexOf(_settings.FrameRate));
+        UpdateFpsNow();
         _langHeader.Text = L.Pick("言語", "Language");
         _language.SelectedIndex = _settings.Language == AppLanguage.En ? 1 : 0;
         _appearanceHeader.Text = L.Pick("表示", "Appearance");
-        _sizeLabel.Text = L.Pick("大きさ", "Size");
-        _size.Value = Math.Clamp((int)Math.Round(_settings.Scale * 10), _size.Minimum, _size.Maximum);
-        _sizeValue.Text = $"{(int)Math.Round(_settings.Scale * 100)}%";
+        _opacityLabel.Text = L.Pick("不透明度", "Opacity");
+        _opacity.Value = Math.Clamp((int)Math.Round(_settings.Opacity * 20), _opacity.Minimum, _opacity.Maximum);
+        _opacityValue.Text = $"{(int)Math.Round(_settings.Opacity * 100)}%";
+        _onTop.Text = L.Pick("ほかのウィンドウより手前に表示", "Keep above other windows");
+        _onTop.Checked = _settings.AlwaysOnTop;
+        _sizeNote.Text = L.Pick("鈴の上で Ctrl キーを押しながらホイールを回しても大きさを変えられます。フレームレートは高いほど動きがなめらかになりますが、電力を少し多く使います。",
+                                "You can also resize Suzu by turning the mouse wheel over Suzu while holding Ctrl. A higher frame rate makes movement smoother but uses a little more power.");
+        _speedLabel.Text = L.Pick("動く速さ", "Movement speed");
+        _speed.Value = Math.Clamp((int)Math.Round(_settings.MoveSpeed * 10), _speed.Minimum, _speed.Maximum);
+        _speedValue.Text = "×" + _settings.MoveSpeed.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+        _reset.Text = L.Pick("見た目と行動の設定を初期値に戻す", "Reset appearance and behavior to defaults");
         _behaviorHeader.Text = L.Pick("行動", "Behavior");
         _interact.Text = L.Pick("ウィンドウの上に乗る・飛び降りる", "Climb onto and jump off windows");
         _interact.Checked = _settings.InteractWithWindows;
@@ -279,7 +418,7 @@ internal sealed class SettingsForm : SuzuForm
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) _settings.Changed -= OnSettingsChanged;
+        if (disposing) { _settings.Changed -= OnSettingsChanged; _status.Changed -= OnStatusChanged; }
         base.Dispose(disposing);
     }
 }

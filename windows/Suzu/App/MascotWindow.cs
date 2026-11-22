@@ -18,6 +18,9 @@ internal sealed class MascotWindow : LayeredWindow
     /// <summary>離したときの速度（シミュレーション座標・px/秒）</summary>
     public event Action<PointD>? DragEnded;
     public event Action<Point>? MenuRequested;
+    /// <summary>Ctrl を押しながらのホイール操作（正なら大きく）</summary>
+    public event Action<int>? ResizeRequested;
+    private int _wheelAccumulator;
 
     private LayeredSurface? _surface;
     private (string? Frame, bool Mirrored, string? Emote, int Body, double Dpi) _drawn;
@@ -221,6 +224,18 @@ internal sealed class MascotWindow : LayeredWindow
             _dragStart = null;
             _isDragging = false;
         }
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if ((ModifierKeys & Keys.Control) == 0) return;
+        // 高精度タッチパッドは細かい値が続けて届くので、1 ノッチ分たまってから 1 段階変える
+        _wheelAccumulator += e.Delta;
+        int steps = _wheelAccumulator / SystemInformation.MouseWheelScrollDelta;
+        if (steps == 0) return;
+        _wheelAccumulator -= steps * SystemInformation.MouseWheelScrollDelta;
+        ResizeRequested?.Invoke(steps);
     }
 
     protected override void Dispose(bool disposing)

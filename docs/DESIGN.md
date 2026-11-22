@@ -48,7 +48,7 @@ UI（吹き出しなど）もこのパレット（白・#7C94D9 系・#3D4A8F �
 
 ```
 SuzuApp (AppKit / SwiftUI)                    ← 表示・入力・OS 連携
- ├─ AppDelegate         ループ(30fps)、メニュー、設定、各部の接続
+ ├─ AppDelegate         ループ(モニターのリフレッシュレート)、メニュー、設定、各部の接続
  ├─ MascotPanel/View    透過ウィンドウ、スプライト描画、マウス入力
  ├─ EnvironmentSensor   画面・ウィンドウ → Terrain
  ├─ SpriteStore         manifest.json と PNG の読み込み
@@ -113,7 +113,7 @@ Live2D 等へ移行する際は描画層（`MascotView`）を差し替え、`Pos
 
 ## 6. 品質面
 
-- 30fps のタイマー 1 本＋1 秒ごとの窓取得のみ。画面スリープ中はタイマー停止。
+- 描画はモニターのリフレッシュに合わせる（macOS は CADisplayLink、Windows は DwmFlush）。設定で上限 fps を指定可。ほかは 1 秒ごとの窓取得のみ。画面スリープ中は停止。
   実測（Apple Silicon、release ビルド）: CPU 0.3〜0.8%、RSS 約 72〜85MB。
 - 画像は起動時に一度だけ読み込み、`CALayer.contents` の差し替えのみ（毎フレームの描画処理なし）。
 - 位置はピクセル境界に丸めて配置（にじみ防止）。Retina・表示倍率は `backingScaleFactor` に追従。

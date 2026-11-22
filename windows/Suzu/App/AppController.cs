@@ -7,7 +7,7 @@ namespace Suzu.App;
 
 /// <summary>
 /// アプリ全体の制御（macOS 版 AppDelegate に相当）。
-/// ループ(約 30fps)、通知領域のアイコンとメニュー、設定、各部の接続を受け持つ。
+/// ループ（モニターのリフレッシュレートに合わせる）、通知領域のアイコンとメニュー、設定、各部の接続を受け持つ。
 /// </summary>
 internal sealed class AppController : ApplicationContext
 {
@@ -22,7 +22,9 @@ internal sealed class AppController : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu = new();
 
-    private readonly System.Windows.Forms.Timer _frameTimer = new() { Interval = 30 };
+    private readonly FrameClock _frameClock;
+    private int _framesSinceMeasure;
+    private double _lastMeasure;
     private readonly System.Windows.Forms.Timer _terrainTimer = new() { Interval = 1000 };
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
     private double _lastTick;
@@ -69,6 +71,9 @@ internal sealed class AppController : ApplicationContext
         _window.Dragged += p => { _sim.DragTo(p); Render(); };
         _window.DragEnded += v => _sim.EndDrag(v);
         _window.MenuRequested += ShowMenuAt;
+        _window.ResizeRequested += steps => _settings.AdjustScale(steps);
+        _window.KeepOnTop = _settings.AlwaysOnTop;
+        _window.Alpha = OpacityByte;
 
         _tray = new NotifyIcon
         {
@@ -80,7 +85,8 @@ internal sealed class AppController : ApplicationContext
         _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) OpenControlPanel(); };
         _menu.Opening += (_, e) => { BuildMenu(); e.Cancel = false; };
 
-        _frameTimer.Tick += (_, _) => Tick();
+        _frameClock = new FrameClock(Tick);
+        UpdateRefreshRate();
         _terrainTimer.Tick += (_, _) => RefreshTerrain();
         _settings.Changed += OnSettingsChanged;
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
@@ -143,6 +149,7 @@ internal sealed class AppController : ApplicationContext
     // ---- 大きさ・表示倍率 ----
 
     private double BodyPx => _settings.BodyHeight * _dpi;
+    private byte OpacityByte => (byte)Math.Round(_settings.Opacity * 255);
 
     private void ApplyBodySize()
     {
@@ -150,6 +157,8 @@ internal sealed class AppController : ApplicationContext
         _sim.Cfg.BodyHeight = h;
         _sim.Cfg.BodyWidth = h * 0.38;
         _sim.Cfg.SpeedScale = _dpi;
+        _sim.Cfg.WalkSpeed = 42 * _settings.MoveSpeed;
+        _sim.Cfg.ClimbSpeed = 28 * _settings.MoveSpeed;
         _sensor.Headroom = h + 20 * _dpi;
     }
 
@@ -167,15 +176,17 @@ internal sealed class AppController : ApplicationContext
 
     private void StartTimers()
     {
-        if (_frameTimer.Enabled) return;
+        if (_frameClock.Enabled) return;
         _lastTick = _stopwatch.Elapsed.TotalSeconds;
-        _frameTimer.Start();
+        _lastMeasure = _lastTick;
+        _framesSinceMeasure = 0;
+        _frameClock.Start();
         _terrainTimer.Start();
     }
 
     private void StopTimers()
     {
-        _frameTimer.Stop();
+        _frameClock.Stop();
         _terrainTimer.Stop();
     }
 
@@ -184,6 +195,7 @@ internal sealed class AppController : ApplicationContext
         double now = _stopwatch.Elapsed.TotalSeconds;
         double dt = now - _lastTick;
         _lastTick = now;
+        _framesSinceMeasure++;
         _animationClock += dt;
         _sim.ObserveMouse(EnvironmentSensor.ToSim(Cursor.Position));
         _sim.Step(dt);
@@ -191,8 +203,39 @@ internal sealed class AppController : ApplicationContext
         if (now - _lastSave > 30) { _settings.SavedPosition = _sim.Position; _lastSave = now; }
     }
 
+    /// <summary>鈴のいるモニターのリフレッシュレートを調べ、描画の上限を決める</summary>
+    private void UpdateRefreshRate()
+    {
+        var pt = EnvironmentSensor.ToScreen(_sim.Position);
+        int hz = Native.RefreshRateOf(Screen.FromPoint(new Point(pt.X, pt.Y - 1)));
+        int max = Screen.AllScreens.Select(Native.RefreshRateOf).DefaultIfEmpty(hz).Max();
+        int limit = _settings.FrameRate > 0 ? Math.Min(_settings.FrameRate, hz) : hz;
+        _frameClock.MaxFps = limit;
+        if (_status.RefreshRate != hz || _status.MaxRefreshRate != max)
+        {
+            _status.RefreshRate = hz;
+            _status.MaxRefreshRate = max;
+            _status.NotifyChanged();
+        }
+    }
+
+    /// <summary>1 秒ごと：実際の fps を測る</summary>
+    private void MeasureFrameRate()
+    {
+        double now = _stopwatch.Elapsed.TotalSeconds;
+        double elapsed = now - _lastMeasure;
+        if (elapsed <= 0) return;
+        int fps = (int)Math.Round(_framesSinceMeasure / elapsed);
+        _framesSinceMeasure = 0;
+        _lastMeasure = now;
+        if (fps == _status.MeasuredFps) return;
+        _status.MeasuredFps = fps;
+        if (_settingsForm is { Visible: true }) _status.NotifyChanged();
+    }
+
     private void RefreshTerrain()
     {
+        if (_frameClock.Enabled) { MeasureFrameRate(); UpdateRefreshRate(); }
         if (_controlPanel is { Visible: true }) UpdateStatusText();
         if (_sim.Motion is Motion.Dragged) return;
         UpdateDpiForPosition();
@@ -221,6 +264,20 @@ internal sealed class AppController : ApplicationContext
                 ApplyBodySize();
                 RefreshTerrain();
                 if (_status.Running) Render();
+                break;
+            case nameof(AppSettings.Opacity):
+                _window.Alpha = OpacityByte;
+                _window.ForceRedraw();
+                if (_status.Running) Render();
+                break;
+            case nameof(AppSettings.AlwaysOnTop):
+                _window.KeepOnTop = _settings.AlwaysOnTop;
+                break;
+            case nameof(AppSettings.FrameRate):
+                UpdateRefreshRate();
+                break;
+            case nameof(AppSettings.MoveSpeed):
+                ApplyBodySize();
                 break;
             case nameof(AppSettings.Paused):
                 _sim.Cfg.Paused = _settings.Paused;
@@ -342,11 +399,42 @@ internal sealed class AppController : ApplicationContext
             Checked = _settings.Paused,
         };
         _menu.Items.Add(pause);
+        _menu.Items.Add(BuildSizeMenu());
+        _menu.Items.Add(new ToolStripMenuItem(L.Pick("ほかのウィンドウより手前に表示", "Keep Above Other Windows"), null,
+                                              (_, _) => _settings.AlwaysOnTop = !_settings.AlwaysOnTop)
+        {
+            Checked = _settings.AlwaysOnTop,
+        });
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(L.Pick("鈴と話す…", "Chat with Suzu…"), null, (_, _) => OpenConversation());
         _menu.Items.Add(L.Pick("設定…", "Settings…"), null, (_, _) => OpenSettings());
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(L.Pick("終了", "Quit"), null, (_, _) => Quit());
+    }
+
+    /// <summary>「大きさ」サブメニュー（よく使う大きさ＋1 段階ずつの調整）</summary>
+    private ToolStripMenuItem BuildSizeMenu()
+    {
+        int percent = (int)Math.Round(_settings.Scale * 100);
+        var size = new ToolStripMenuItem(L.Pick($"大きさ（{percent}%）", $"Size ({percent}%)"));
+        size.DropDownItems.Add(new ToolStripMenuItem(L.Pick("大きくする", "Larger"), null, (_, _) => _settings.AdjustScale(1))
+        {
+            Enabled = _settings.Scale < AppSettings.MaxScale,
+        });
+        size.DropDownItems.Add(new ToolStripMenuItem(L.Pick("小さくする", "Smaller"), null, (_, _) => _settings.AdjustScale(-1))
+        {
+            Enabled = _settings.Scale > AppSettings.MinScale,
+        });
+        size.DropDownItems.Add(new ToolStripSeparator());
+        foreach (var preset in AppSettings.ScalePresets)
+        {
+            var title = $"{(int)Math.Round(preset * 100)}%" + (preset == 1.0 ? L.Pick("（標準）", " (standard)") : "");
+            size.DropDownItems.Add(new ToolStripMenuItem(title, null, (_, _) => _settings.Scale = preset)
+            {
+                Checked = Math.Abs(_settings.Scale - preset) < 0.001,
+            });
+        }
+        return size;
     }
 
     /// <summary>カーソルのある画面に呼び寄せる</summary>
@@ -376,7 +464,7 @@ internal sealed class AppController : ApplicationContext
 
     private void OpenSettings()
     {
-        _settingsForm ??= new SettingsForm(_settings, _sim.Catalog.MissingPoses().Select(m => $"{m.Pose.RawName()}/{m.Facing.RawName()}").ToList());
+        _settingsForm ??= new SettingsForm(_settings, _status, _sim.Catalog.MissingPoses().Select(m => $"{m.Pose.RawName()}/{m.Facing.RawName()}").ToList());
         BringUp(_settingsForm);
     }
 
@@ -425,6 +513,7 @@ internal sealed class AppController : ApplicationContext
     protected override void ExitThreadCore()
     {
         StopTimers();
+        _frameClock.Dispose();
         _bridge.Stop();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;

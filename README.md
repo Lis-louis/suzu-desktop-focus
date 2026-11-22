@@ -115,7 +115,9 @@ On Windows, Suzu's icon sits in the notification area (system tray) at the right
 
 ### Settings
 
-You can change the display language (Japanese / English), her size (60–160%), whether she climbs onto windows, and the temporary options below.
+You can change the display language (Japanese / English), her size (40–200%), opacity (30–100%), whether she stays above other windows, the frame rate (matches your monitor's refresh rate by default, e.g. 180 fps on a 180 Hz monitor; you can cap it at 30–240 fps), how fast she moves (×0.5–×2.0), whether she climbs onto windows, and the temporary options below. **Reset appearance and behavior to defaults** puts these back to their initial values (language and startup options are kept).
+
+Size can also be changed from the Control Panel, from **Size** in the right-click / menu-bar (tray) menu (50%, 75%, 100%, 125%, 150%, 200%, or one step larger/smaller), or by scrolling over Suzu while holding ⌘ (macOS) / Ctrl (Windows).
 
 > The app is shown in Japanese by default. You can switch it to English in Settings → Language.
 
