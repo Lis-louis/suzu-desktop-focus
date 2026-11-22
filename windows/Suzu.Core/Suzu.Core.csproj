@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 行動・物理・地形・スプライト解決などの純粋ロジック（Windows API 非依存・テスト対象）。
+       macOS 版の Sources/SuzuCore・Sources/SuzuBridge を C# に移植したもの。 -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Suzu.Core</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>

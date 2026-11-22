@@ -1,0 +1,4 @@
+#!/bin/sh
+# 上書きインストールの前に、起動中の鈴を終了する（位置は終了時に保存される）
+/usr/bin/pkill -x Suzu >/dev/null 2>&1 || true
+exit 0

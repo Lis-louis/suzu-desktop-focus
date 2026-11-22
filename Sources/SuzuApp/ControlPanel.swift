@@ -5,6 +5,14 @@ final class MascotStatus: ObservableObject {
     @Published var running = true
     @Published var activityText = ""
     @Published var bridgeConnected = false
+    /// 鈴のいるモニターのリフレッシュレート（Hz）
+    @Published var refreshRate = 60
+    /// つながっているモニターの中で最も高いリフレッシュレート（Hz）
+    @Published var maxRefreshRate = 60
+    /// 実際に描画できている回数（1 秒あたり）
+    @Published var measuredFPS = 0
+    /// 設定画面が開いているか（開いているときだけ fps を更新する）
+    var settingsVisible = false
 }
 
 /// 鈴の起動・停止などをまとめた操作画面
@@ -58,6 +66,7 @@ struct ControlPanelView: View {
             .frame(maxWidth: .infinity)
 
             Divider()
+            ScaleSlider(settings: settings)
             Toggle(L.pick("自律行動を一時停止（その場でじっとする）", "Pause autonomous behavior (stay still)"), isOn: $settings.paused).disabled(!status.running)
             Toggle(L.pick("ログイン時に起動", "Launch at login"), isOn: $settings.launchAtLogin)
             Toggle(L.pick("アプリ起動時にこの画面を表示", "Show this panel when the app opens"), isOn: $settings.showControlPanelOnLaunch)

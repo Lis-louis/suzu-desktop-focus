@@ -1,0 +1,12 @@
+#!/bin/sh
+# インストールが終わったら、ログイン中のユーザーとして鈴を起動する。
+# （インストーラーは root で動くため、そのまま open するとユーザーのデスクトップに出てこない）
+APP="$2/Applications/Suzu.app"
+[ -d "$APP" ] || APP="/Applications/Suzu.app"
+USER_NAME=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
+case "$USER_NAME" in
+    ""|root|loginwindow|_mbsetupuser) exit 0 ;;
+esac
+USER_ID=$(/usr/bin/id -u "$USER_NAME" 2>/dev/null) || exit 0
+/bin/launchctl asuser "$USER_ID" /usr/bin/sudo -u "$USER_NAME" /usr/bin/open "$APP" >/dev/null 2>&1 || true
+exit 0

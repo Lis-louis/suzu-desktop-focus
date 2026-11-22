@@ -7,7 +7,11 @@ public struct ScreenInfo: Equatable, Sendable {
     public var id: UInt32
     /// Dock・メニューバーを除いた可視領域
     public var visibleFrame: CGRect
-    public init(id: UInt32, visibleFrame: CGRect) { self.id = id; self.visibleFrame = visibleFrame }
+    /// 画面全体（隣の画面との接し方を調べるのに使う）。省略時は visibleFrame と同じ。
+    public var frame: CGRect
+    public init(id: UInt32, visibleFrame: CGRect, frame: CGRect? = nil) {
+        self.id = id; self.visibleFrame = visibleFrame; self.frame = frame ?? visibleFrame
+    }
 }
 
 public struct WindowInfo: Equatable, Sendable {
@@ -61,8 +65,13 @@ public struct Terrain: Equatable, Sendable {
         for s in screens {
             let f = s.visibleFrame
             floors.append(Floor(owner: .screen(s.id), y: f.minY, minX: f.minX, maxX: f.maxX))
-            walls.append(Wall(owner: .screen(s.id), side: .left, x: f.minX, minY: f.minY, maxY: f.maxY))
-            walls.append(Wall(owner: .screen(s.id), side: .right, x: f.maxX, minY: f.minY, maxY: f.maxY))
+            // 隣の画面と接している辺は「壁」ではなく通り道
+            if adjacent(to: s, side: .left, in: screens) == nil {
+                walls.append(Wall(owner: .screen(s.id), side: .left, x: f.minX, minY: f.minY, maxY: f.maxY))
+            }
+            if adjacent(to: s, side: .right, in: screens) == nil {
+                walls.append(Wall(owner: .screen(s.id), side: .right, x: f.maxX, minY: f.minY, maxY: f.maxY))
+            }
         }
         for (i, w) in windows.enumerated() {
             let top = w.frame.maxY
@@ -107,6 +116,34 @@ public struct Terrain: Equatable, Sendable {
 
     public func screen(containing p: CGPoint) -> ScreenInfo? {
         screens.first { $0.visibleFrame.insetBy(dx: -1, dy: -1).contains(p) }
+    }
+
+    public func screen(id: UInt32) -> ScreenInfo? { screens.first { $0.id == id } }
+
+    /// s の左右どちらかの辺に接している画面（マルチディスプレイの乗り継ぎ用）
+    public func adjacentScreen(to s: ScreenInfo, side: Wall.Side) -> ScreenInfo? {
+        Terrain.adjacent(to: s, side: side, in: screens)
+    }
+
+    static func adjacent(to s: ScreenInfo, side: Wall.Side, in screens: [ScreenInfo]) -> ScreenInfo? {
+        screens.filter { o in
+            o.id != s.id
+                && (side == .right ? abs(o.frame.minX - s.frame.maxX) <= 2 : abs(o.frame.maxX - s.frame.minX) <= 2)
+                && o.frame.maxY > s.frame.minY && o.frame.minY < s.frame.maxY
+        }
+        // 複数あるときは床の高さが近い方
+        .min { abs($0.visibleFrame.minY - s.visibleFrame.minY) < abs($1.visibleFrame.minY - s.visibleFrame.minY) }
+    }
+
+    /// 画面の床（スクリーン下端）
+    public func screenFloor(of s: ScreenInfo) -> Floor? {
+        floors.first { $0.owner == .screen(s.id) }
+    }
+
+    /// x を横方向に含む画面のうち、p に縦方向で最も近いもの（なければ最寄りの画面）
+    public func screen(columnContaining p: CGPoint) -> ScreenInfo? {
+        let column = screens.filter { p.x >= $0.frame.minX && p.x <= $0.frame.maxX }
+        return column.min { dist($0.visibleFrame, p) < dist($1.visibleFrame, p) } ?? nearestScreen(to: p)
     }
 
     /// p に最も近いスクリーン（画面外に出てしまった場合の救済用）

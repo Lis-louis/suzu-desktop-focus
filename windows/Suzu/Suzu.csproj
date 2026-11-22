@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 鈴 Windows 版（WinForms + Win32 レイヤードウィンドウ）。
+       ビルド: dotnet publish windows/Suzu/Suzu.csproj -c Release -r win-x64
+       （Windows 以外のマシンでもコンパイルだけはできるよう EnableWindowsTargeting を有効にしている） -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Suzu</RootNamespace>
+    <AssemblyName>Suzu</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\Resources\AppIcon\Suzu.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+
+    <!-- バージョンはリポジトリ直下の VERSION ファイルに一本化 -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)..\..\VERSION').Trim())</Version>
+    <Product>Suzu Desktop Mascot</Product>
+    <Company>Lis-louis</Company>
+    <Copyright>Program: MIT License / Character "Suzu" © Lis-louis</Copyright>
+    <AssemblyTitle>鈴 Suzu</AssemblyTitle>
+
+    <!-- 配布用：.NET を別途インストールしなくても動く単一の exe -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>ja;en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Suzu.Core\Suzu.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 鈴の画像素材は exe の隣の Sprites\ に置く（manifest.json を書き換えるだけで素材を追加できるよう、exe には埋め込まない） -->
+    <None Include="..\..\Resources\Sprites\**\*" Link="Sprites\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"
+          ExcludeFromSingleFile="true" />
+    <EmbeddedResource Include="..\..\Resources\AppIcon\Suzu.ico" LogicalName="Suzu.ico" />
+  </ItemGroup>
+</Project>

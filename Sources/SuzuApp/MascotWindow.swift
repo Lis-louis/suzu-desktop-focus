@@ -29,6 +29,8 @@ protocol MascotViewDelegate: AnyObject {
     func mascotDragged(feetAt p: CGPoint)
     func mascotDragEnded(velocity: CGVector)
     func mascotMenu() -> NSMenu
+    /// ⌘ を押しながらのスクロール（steps が正なら大きく）
+    func mascotResize(steps: Int)
 }
 
 /// スプライトと吹き出し記号を描く。画像は変形せず、位置・左右反転（許可時のみ）だけを扱う。
@@ -155,6 +157,19 @@ final class MascotView: NSView {
         } else {
             delegate?.mascotClicked()
         }
+    }
+
+    private var scrollAccumulator: CGFloat = 0
+
+    override func scrollWheel(with event: NSEvent) {
+        guard event.modifierFlags.contains(.command) else { super.scrollWheel(with: event); return }
+        // トラックパッドは細かい値が続けて届くので、ある程度たまってから 1 段階変える
+        let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY / 12 : event.scrollingDeltaY
+        scrollAccumulator += delta
+        let steps = Int(scrollAccumulator.rounded(.towardZero))
+        guard steps != 0 else { return }
+        scrollAccumulator -= CGFloat(steps)
+        delegate?.mascotResize(steps: steps)
     }
 
     override func rightMouseDown(with event: NSEvent) {
