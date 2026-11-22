@@ -24,19 +24,23 @@
   Her choices depend on her energy, the time of day, where she is, and cooldowns, so her behavior isn't purely random.
 - **Interacts with windows**: stands on top of windows, moves along when a window moves, falls when it closes, and jumps down.
 - **Mouse interaction**: click to get a reaction, drag to move or throw her, double-click to open the chat window. She turns toward your cursor.
-- **Multiple displays**, saved and restored position, and launch at login.
-- **Lightweight**: about 0.3–0.8% CPU and 75–100 MB of memory (measured on Apple Silicon, release build).
+- **Smooth motion**: draws in step with your monitor's refresh rate (180 fps on a 180 Hz monitor).
+- **Make her your own**: size (40–200%), opacity, keep-on-top, movement speed, and frame rate.
+- **Multiple displays** (she walks over to the next screen), saved and restored position, and launch at login.
+- **Lightweight**: about 50–100 MB of memory and around 1% CPU at 60 fps or below (measured on Apple Silicon, release build; a few percent at 180 fps).
 - **Hooks for Suzu Secretary**: receives notifications, lines, and expressions from the local AI assistant "Suzu Secretary" (鈴秘書).
 
 ## Install
 
-Download the installer for your OS from [Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases)
-(or from the Artifacts of the [Installers](.github/workflows/installers.yml) workflow).
+The installers are in **the top folder of this repository**. Download the one for your OS.
 
-| OS | File | Steps |
+| OS | File | Download |
 |---|---|---|
-| macOS | `Suzu-<version>.pkg` | Open it and follow the installer (Welcome → License → Install). Suzu.app goes into Applications and starts when the installer finishes |
-| Windows | `SuzuSetup-<version>-x64.exe` | Run it and follow the setup wizard (License → Install location → Desktop icon / start at sign-in → Install). Installs for the current user, no administrator rights needed |
+| macOS | [`Suzu-0.1.0.pkg`](Suzu-0.1.0.pkg) | [Direct download](https://github.com/Lis-louis/suzu-desktop-focus/raw/main/Suzu-0.1.0.pkg) |
+| Windows | [`SuzuSetup-0.1.0.exe`](SuzuSetup-0.1.0.exe) | [Direct download](https://github.com/Lis-louis/suzu-desktop-focus/raw/main/SuzuSetup-0.1.0.exe) |
+
+- **macOS**: open the `.pkg` and follow the installer (Welcome → License → Install). Suzu.app goes into Applications and starts when the installer finishes.
+- **Windows**: run the `.exe` and follow the setup wizard (License → Install location → Desktop icon / start at sign-in → Install). It installs for the current user, so no administrator rights are needed.
 
 To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On Windows, use **Settings → Apps → Installed apps → 鈴 Suzu → Uninstall**.
 
@@ -50,6 +54,52 @@ To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On
 - Windows 10 (version 1809 or later) / Windows 11, 64-bit (x64. Also runs on Arm through emulation)
 - To build: Xcode 16 or later / Swift 6 toolchain (macOS), .NET 8 SDK (Windows)
 
+## Usage
+
+| Action | Result |
+|---|---|
+| Click Suzu | She reacts (and wakes up if she was sleeping) |
+| Drag Suzu | Move her anywhere. Release with momentum to throw her |
+| Double-click Suzu | Open the chat window |
+| Right-click Suzu | Menu (stop, call, pause, size, keep on top, chat, settings) |
+| Scroll over Suzu while holding ⌘ (macOS) / Ctrl (Windows) | Resize her |
+| Click the Dock icon (macOS) / the tray icon (Windows) | Open the control panel |
+| Click the bell in the menu bar (macOS) / right-click the tray icon (Windows) | Same menu as right-clicking Suzu |
+| Right-click the Dock icon (macOS) | Stop/start Suzu, call her, open the control panel |
+| ⌘Q (macOS) / "Quit" in the menu (Windows) | Quit the app |
+
+On Windows, Suzu's icon sits in the notification area (system tray) at the right end of the taskbar. If you don't see it, click **^** to show hidden icons.
+
+### Control panel
+
+- **Stop / Start Suzu**: hides or shows Suzu while the app keeps running (almost no CPU while stopped).
+- **Call**: brings Suzu to the screen your mouse is on.
+- **Chat** / **Settings**: open the chat window or the settings.
+- **Size**: adjust with the slider or the − / + buttons.
+- **Pause autonomous behavior**: keeps her still where she is.
+- **Launch at login** (on Windows, "Launch when you sign in"): starts automatically (on macOS, works best with the app in `/Applications`).
+
+### Settings
+
+| Setting | What it does | Default |
+|---|---|---|
+| Display language | Japanese / English | Japanese (Windows follows the OS language) |
+| Size | 40–200%, in 5% steps | 100% |
+| Opacity | 30–100% | 100% |
+| Keep above other windows | When off, other windows can cover her | On |
+| Frame rate | "Match monitor" or a cap from 30 to 240 fps. "Currently" shows the real fps | Match monitor |
+| Climb onto and jump off windows | Whether she uses windows as footholds | On |
+| Pause autonomous behavior | Keeps her still | Off |
+| Movement speed | ×0.5–×2.0 | ×1.0 |
+| Temporary options until the assets are ready | See below | Off |
+
+**Reset appearance and behavior to defaults** restores everything except the language and startup options.
+
+You can also pick a size from **Size** in the right-click menu (50%, 75%, 100%, 125%, 150%, 200%, or one step larger/smaller).
+A higher frame rate looks smoother but uses a little more power. On a laptop, lower it to 60 fps or so to save battery.
+
+> The app is shown in Japanese by default. You can switch it to English in Settings → Language.
+
 ## Build and run
 
 ### macOS
@@ -59,71 +109,48 @@ git clone https://github.com/Lis-louis/suzu-desktop-focus.git
 cd suzu-desktop-focus
 
 scripts/build_app.sh          # creates build/Suzu.app
-open build/Suzu.app           # launch
+open build/Suzu.app           # run it
 ```
 
 During development you can also use:
 
 ```sh
-swift run Suzu                # launch without building the .app
+swift run Suzu                # run without creating the .app
 swift test                    # unit tests
 ```
 
 ### Windows
 
-Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). Run these in PowerShell at the repository root:
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). In PowerShell at the repository root:
 
 ```powershell
 dotnet test windows\Suzu.Core.Tests        # unit tests
-dotnet run --project windows\Suzu          # launch
+dotnet run --project windows\Suzu          # run it
 ```
 
 ### Building the installers
 
 | Installer | Command | Output |
 |---|---|---|
-| macOS `.pkg` | `scripts/build_pkg.sh` (on a Mac) | `build/Suzu-<version>.pkg` (Universal: Apple Silicon + Intel) |
-| Windows setup `.exe` | `powershell -ExecutionPolicy Bypass -File windows\build.ps1` (on Windows, with [Inno Setup 6](https://jrsoftware.org/isdl.php)) | `build\windows\SuzuSetup-<version>-x64.exe` |
+| macOS `.pkg` | `scripts/build_pkg.sh` (on a Mac) | `build/Suzu-<version>.pkg` (Apple Silicon and Intel) |
+| Windows setup `.exe` | `powershell -ExecutionPolicy Bypass -File windows\build.ps1` (on Windows; requires [Inno Setup 6](https://jrsoftware.org/isdl.php)) | `build\windows\SuzuSetup-<version>.exe` |
 
-The Windows `.exe` can't be built on a Mac. Pushing to GitHub runs the [Installers](.github/workflows/installers.yml) workflow,
-which builds both installers on GitHub's macOS and Windows machines and uploads them as Artifacts.
-Pushing a tag such as `v0.1.0` also attaches them to a draft release.
+The Windows `.exe` can't be built on a Mac (and vice versa), so build each one on its own OS.
+
+**When you release a new version**, copy the new installers to the top folder of the repository, replacing the old ones, and commit them.
+The installers in the top folder are not updated automatically when the code changes.
 The version number comes from the `VERSION` file.
 
+Pushing to GitHub also runs the [Installers](.github/workflows/installers.yml) workflow, which builds both installers on GitHub's macOS and Windows machines and uploads them as Artifacts (useful as a build check).
+Pushing a tag such as `v0.1.0` also attaches them to a draft release.
+
 To sign and notarize the macOS package, set `APP_SIGN_IDENTITY`, `PKG_SIGN_IDENTITY`, and `NOTARY_PROFILE` (see the comments in `scripts/build_pkg.sh`).
-
-## Usage
-
-| Action | Result |
-|---|---|
-| Click Suzu | She reacts (and wakes up if she was sleeping) |
-| Drag Suzu | Move her anywhere. Release with momentum to throw her |
-| Double-click Suzu | Open the chat window |
-| Right-click Suzu | Menu |
-| Click the Dock icon (macOS) / the tray icon (Windows) | Open the control panel |
-| Right-click the Dock icon (macOS) / the tray icon (Windows) | Stop/start Suzu, call her |
-| ⌘Q (macOS) / "Quit" in the menu (Windows) | Quit the app |
-
-On Windows, Suzu's icon sits in the notification area (system tray) at the right end of the taskbar. If you don't see it, click **^** to show hidden icons.
-
-### Control panel
-
-- **Stop / Start Suzu**: hides or shows Suzu while the app keeps running (almost no CPU while stopped).
-- **Call**: brings Suzu to the screen your mouse is on.
-- **Pause autonomous behavior**: keeps her still where she is.
-- **Launch at login**: starts automatically when you log in (works best with the app in `/Applications`).
-
-### Settings
-
-You can change the display language (Japanese / English), her size (40–200%), opacity (30–100%), whether she stays above other windows, the frame rate (matches your monitor's refresh rate by default, e.g. 180 fps on a 180 Hz monitor; you can cap it at 30–240 fps), how fast she moves (×0.5–×2.0), whether she climbs onto windows, and the temporary options below. **Reset appearance and behavior to defaults** puts these back to their initial values (language and startup options are kept).
-
-Size can also be changed from the Control Panel, from **Size** in the right-click / menu-bar (tray) menu (50%, 75%, 100%, 125%, 150%, 200%, or one step larger/smaller), or by scrolling over Suzu while holding ⌘ (macOS) / Ctrl (Windows).
-
-> The app is shown in Japanese by default. You can switch it to English in Settings → Language.
 
 ## Project structure
 
 ```
+Suzu-0.1.0.pkg    macOS installer
+SuzuSetup-0.1.0.exe Windows installer
 Sources/          macOS version (Swift)
 ├─ SuzuCore/      behavior, physics, terrain, sprite resolution (no AppKit, unit-tested)
 ├─ SuzuBridge/    interface to Suzu Secretary
@@ -195,7 +222,7 @@ powershell -File tools\send_event.ps1 '{"type":"speak","text":"Good work today!"
 ### Known limitations
 
 - There is no left-facing image yet, so she moves left in her front-facing standing pose.
-- Suzu is always shown in front of normal windows (she never goes behind them).
+- Even with "Keep above other windows" turned off, she doesn't walk behind windows on purpose; other windows simply cover her.
 - Suzu cannot move other windows (that would need permission to control other apps).
 - Windows: maximized windows and always-on-top windows are not used as footholds. Settings are stored in `%APPDATA%\Suzu\settings.json`.
 
