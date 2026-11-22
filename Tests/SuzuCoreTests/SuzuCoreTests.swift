@@ -238,6 +238,73 @@ final class SimulationTests: XCTestCase {
     }
 }
 
+final class MultiScreenTests: XCTestCase {
+    // 左：Dock ありの内蔵画面（床 80）、右：外部モニタ（床 0 と 300 の 2 パターン）
+    let left = ScreenInfo(id: 1, visibleFrame: CGRect(x: 0, y: 80, width: 1600, height: 900),
+                          frame: CGRect(x: 0, y: 0, width: 1600, height: 1000))
+    let manifest = SpriteManifest(entries: [
+        .init(pose: .stand, facing: .front, frames: ["front"]),
+        .init(pose: .walk, facing: .right, frames: ["side_right"], bob: true),
+    ])
+
+    func right(floorY: CGFloat) -> ScreenInfo {
+        ScreenInfo(id: 2, visibleFrame: CGRect(x: 1600, y: floorY, width: 1920, height: 1000),
+                   frame: CGRect(x: 1600, y: floorY, width: 1920, height: 1025))
+    }
+
+    func makeSim(_ screens: [ScreenInfo]) -> MascotSimulation {
+        let sim = MascotSimulation(catalog: SpriteCatalog(manifest: manifest), seed: 7)
+        sim.hourProvider = { 14 }
+        sim.updateTerrain(Terrain.build(screens: screens, windows: [], headroom: 200))
+        return sim
+    }
+
+    func testSharedEdgeIsNotAWall() {
+        let t = Terrain.build(screens: [left, right(floorY: 0)], windows: [], headroom: 200)
+        XCTAssertEqual(t.walls.count, 2)
+        XCTAssertEqual(t.adjacentScreen(to: left, side: .right)?.id, 2)
+        XCTAssertNil(t.adjacentScreen(to: left, side: .left))
+    }
+
+    func crosses(to floorY: CGFloat, from x: CGFloat = 1200) {
+        let sim = makeSim([left, right(floorY: floorY)])
+        sim.config.paused = true
+        sim.place(at: CGPoint(x: x, y: 80))
+        sim.force(.crossScreen)
+        XCTAssertEqual(sim.activity, .crossScreen)
+        for _ in 0..<(30 * 40) { sim.step(1.0 / 30); if sim.position.x > 1600, case .grounded = sim.motion { break } }
+        guard case .grounded(let f) = sim.motion else { return XCTFail("not grounded: \(sim.motion)") }
+        XCTAssertEqual(f.owner, .screen(2))
+        XCTAssertEqual(sim.position.y, floorY, accuracy: 0.01)
+        XCTAssertGreaterThan(sim.position.x, 1600)
+    }
+
+    func testCrossToLowerScreen() { crosses(to: 0) }
+    func testCrossToHigherScreen() { crosses(to: 300) }
+    func testCrossToSameHeightScreen() { crosses(to: 80) }
+
+    func testThrowAcrossSharedEdge() {
+        let sim = makeSim([left, right(floorY: 0)])
+        sim.place(at: CGPoint(x: 1500, y: 80))
+        sim.beginDrag(); sim.drag(to: CGPoint(x: 1580, y: 500))
+        sim.endDrag(velocity: CGVector(dx: 600, dy: 0))
+        for _ in 0..<90 { sim.step(1.0 / 30) }
+        XCTAssertGreaterThan(sim.position.x, 1600)
+        XCTAssertEqual(sim.position.y, 0, accuracy: 0.01)
+    }
+
+    func testEventuallyVisitsOtherScreenOnItsOwn() {
+        let sim = makeSim([left, right(floorY: 0)])
+        sim.place(at: CGPoint(x: 800, y: 80))
+        var visited = false
+        for _ in 0..<(30 * 60 * 30) {
+            sim.step(1.0 / 30)
+            if sim.position.x > 1600 { visited = true; break }
+        }
+        XCTAssertTrue(visited)
+    }
+}
+
 final class BridgeTests: XCTestCase {
     func testDecode() {
         XCTAssertEqual(DistributedNotificationBridge.decode(#"{"type":"expression","pose":"joy","duration":2}"#), .expression(.joy, duration: 2))

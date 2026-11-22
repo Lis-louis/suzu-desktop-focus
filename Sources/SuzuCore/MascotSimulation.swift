@@ -104,7 +104,9 @@ public final class MascotSimulation {
         case .falling, .dragged:
             break
         }
-        if terrain.screens.isEmpty == false, terrain.screen(containing: position) == nil, motion != .dragged {
+        // 落下中（隣の画面へ跳び移っている途中を含む）は着地か step 側の救済に任せる
+        let airborne: Bool = { if case .falling = motion { return true } else { return false } }()
+        if terrain.screens.isEmpty == false, terrain.screen(containing: position) == nil, motion != .dragged, !airborne {
             rescue()
         }
     }
@@ -233,7 +235,7 @@ public final class MascotSimulation {
         timeLeft -= dt
 
         switch activity {
-        case .walk, .goToEdge, .jumpDown, .climb, .hang:
+        case .walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen:
             guard let tx = targetX else { finishActivity(); return }
             let dir: CGFloat = tx > position.x ? 1 : -1
             facing = dir > 0 ? .right : .left
@@ -243,6 +245,7 @@ public final class MascotSimulation {
             // 床の乗り継ぎ（隣接ディスプレイ・同じ高さの足場）
             if !floor.contains(x: nx), activity != .jumpDown {
                 if let next = terrain.floor(at: nx, y: floor.y) { motion = .grounded(next) }
+                else if activity == .crossScreen, hopToNeighborScreen(from: floor, dir: dir) { return }
                 else { position.x = min(max(nx, floor.minX), floor.maxX); arrive(); return }
             }
             if activity == .jumpDown, !floor.contains(x: nx) {
@@ -266,6 +269,26 @@ public final class MascotSimulation {
             if activity == .idle { trackMouse(dt) }
             if timeLeft <= 0 { finishActivity() }
         }
+    }
+
+    /// 高さの違う隣の画面の床へ跳び移る（下なら飛び降り、上ならジャンプ）。隣がなければ false。
+    private func hopToNeighborScreen(from floor: Floor, dir: CGFloat) -> Bool {
+        guard case .screen(let id) = floor.owner, let s = terrain.screen(id: id),
+              let n = terrain.adjacentScreen(to: s, side: dir > 0 ? .right : .left),
+              let nf = terrain.screenFloor(of: n), nf.width > config.bodyWidth * 2 else { return false }
+        let inset = config.bodyWidth / 2 + 40
+        let landX = dir > 0 ? nf.minX + inset : nf.maxX - inset
+        let g = config.gravity
+        let rise = nf.y - floor.y
+        let peak = max(rise, 0) + 40           // 床より少し高く跳んでから降りる
+        let vy = sqrt(2 * g * peak)
+        let flight = vy / g + sqrt(2 * (peak - rise) / g)
+        // 空中では横速度が 0.6^t で減衰するので、その分を見込んで初速を決める
+        let decay = 1 - pow(0.6, flight)
+        let vx = (landX - position.x) * CGFloat(-log(0.6)) / CGFloat(max(decay, 0.05))
+        startFalling(CGVector(dx: vx, dy: vy))
+        facing = dir > 0 ? .right : .left
+        return true
     }
 
     /// 歩行の目的地に到着
@@ -311,7 +334,9 @@ public final class MascotSimulation {
         if config.paused { setActivity(.idle, duration: 3); return }
         guard case .grounded(let f) = motion else { return }
         let onWindow: Bool = { if case .window = f.owner { return true } else { return false } }()
-        let ctx = BehaviorContext(energy: energy, hour: hourProvider(), onWindow: onWindow, last: lastActivity) { [catalog, config] s in
+        let canCross = neighborSides(of: f).isEmpty == false
+        let ctx = BehaviorContext(energy: energy, hour: hourProvider(), onWindow: onWindow,
+                                  canCrossScreen: canCross, last: lastActivity) { [catalog, config] s in
             config.allowPlaceholders || catalog.has(s.pose)
         }
         let (a, d) = planner.choose(in: ctx, now: clock, rng: &rng)
@@ -332,9 +357,19 @@ public final class MascotSimulation {
             let toLeft = Bool.random(using: &rng)
             targetX = toLeft ? range.lowerBound + margin : range.upperBound - margin
         case .climb:
-            // 近い方の壁へ
-            let toLeft = position.x - range.lowerBound < range.upperBound - position.x
-            targetX = toLeft ? range.lowerBound + margin : range.upperBound - margin
+            // 近い方の壁へ（隣の画面とつながっている辺には壁がないので、その場合は反対側へ）
+            let hasWall = { (x: CGFloat) in self.terrain.walls.contains { abs($0.x - x) < 1 && $0.minY <= f.y + 1 } }
+            var toLeft = position.x - range.lowerBound < range.upperBound - position.x
+            if !hasWall(toLeft ? range.lowerBound : range.upperBound) { toLeft.toggle() }
+            targetX = hasWall(toLeft ? range.lowerBound : range.upperBound)
+                ? (toLeft ? range.lowerBound + margin : range.upperBound - margin) : nil
+        case .crossScreen:
+            targetX = nil
+            guard let side = neighborSides(of: f).randomElement(using: &rng),
+                  case .screen(let id) = f.owner, let s = terrain.screen(id: id),
+                  let n = terrain.adjacentScreen(to: s, side: side), let nf = terrain.screenFloor(of: n) else { break }
+            let depth = CGFloat.random(in: 160...480, using: &rng)
+            targetX = side == .right ? min(nf.minX + depth, nf.maxX - margin) : max(nf.maxX - depth, nf.minX + margin)
         case .jumpDown:
             let toLeft = position.x - f.minX < f.maxX - position.x
             targetX = toLeft ? f.minX - config.bodyWidth : f.maxX + config.bodyWidth
@@ -349,6 +384,15 @@ public final class MascotSimulation {
             targetX = nil
         }
         if a == .lookAround { lookTimer = 0 }
+    }
+
+    /// スクリーンの床にいるとき、隣の画面がつながっている側
+    private func neighborSides(of f: Floor) -> [Wall.Side] {
+        guard case .screen(let id) = f.owner, let s = terrain.screen(id: id) else { return [] }
+        return [Wall.Side.left, .right].filter { side in
+            guard let n = terrain.adjacentScreen(to: s, side: side), let nf = terrain.screenFloor(of: n) else { return false }
+            return nf.width > config.bodyWidth * 2
+        }
     }
 
     /// 同じ高さで連続している床をまとめた歩行可能範囲
@@ -368,7 +412,7 @@ public final class MascotSimulation {
     private func setActivity(_ a: Activity, duration: Double) {
         activity = a
         timeLeft = duration
-        if a != .walk && a != .goToEdge && a != .jumpDown && a != .climb && a != .hang { targetX = nil }
+        if ![.walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen].contains(a) { targetX = nil }
     }
 
     private func startFalling(_ v: CGVector) {
@@ -383,10 +427,13 @@ public final class MascotSimulation {
             .max { $0.y < $1.y }
     }
 
+    /// 画面の外へ飛び出さないようにする。隣の画面とつながっている辺は素通りできる。
     private func clampToScreensHorizontally() {
-        guard let s = terrain.screen(containing: position) ?? terrain.nearestScreen(to: position) else { return }
+        guard let s = terrain.screen(columnContaining: position) else { return }
         let half = config.bodyWidth / 2
-        position.x = min(max(position.x, s.visibleFrame.minX + half), s.visibleFrame.maxX - half)
+        let lo = terrain.adjacentScreen(to: s, side: .left) == nil ? s.visibleFrame.minX + half : -CGFloat.greatestFiniteMagnitude
+        let hi = terrain.adjacentScreen(to: s, side: .right) == nil ? s.visibleFrame.maxX - half : CGFloat.greatestFiniteMagnitude
+        position.x = min(max(position.x, lo), hi)
         if position.y > s.visibleFrame.maxY - config.bodyHeight { position.y = s.visibleFrame.maxY - config.bodyHeight }
     }
 
@@ -421,7 +468,7 @@ public final class MascotSimulation {
         case .hanging: pose = .hang
         case .grounded:
             switch activity {
-            case .walk, .goToEdge, .jumpDown, .climb, .hang: pose = targetX == nil ? .stand : .walk
+            case .walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen: pose = targetX == nil ? .stand : .walk
             case .sit: pose = .sit
             case .sleep: pose = .sleep; emote = .sleepy
             case .doze: pose = .stand; emote = .sleepy

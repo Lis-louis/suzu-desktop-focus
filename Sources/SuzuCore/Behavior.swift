@@ -3,12 +3,12 @@ import Foundation
 /// 鈴の「今やっていること」。自律行動として選ばれるものと、外部要因によるものがある。
 public enum Activity: String, CaseIterable, Sendable {
     // 自律行動
-    case idle, walk, lookAround, turnAway, doze, sit, sleep, stretch, joy, goToEdge, jumpDown, climb, hang
+    case idle, walk, lookAround, turnAway, doze, sit, sleep, stretch, joy, goToEdge, jumpDown, climb, hang, crossScreen
     // 外部要因（自律選択されない）
     case react, dragged, falling
 
     public static let autonomous: [Activity] = [.idle, .walk, .lookAround, .turnAway, .doze, .sit, .sleep,
-                                                .stretch, .joy, .goToEdge, .jumpDown, .climb, .hang]
+                                                .stretch, .joy, .goToEdge, .jumpDown, .climb, .hang, .crossScreen]
 }
 
 /// 行動の発生条件・確率・継続時間の定義。数値調整はここに集約する。
@@ -36,6 +36,8 @@ public struct BehaviorSpec: Sendable {
         .init(activity: .jumpDown,   pose: .walk,    weight: 5,  duration: 30...30,  cooldown: 30,  placement: .windowTop),
         .init(activity: .climb,      pose: .climb,   weight: 3,  duration: 8...20,   cooldown: 120, placement: .screenFloor),
         .init(activity: .hang,       pose: .hang,    weight: 4,  duration: 6...15,   cooldown: 90,  placement: .windowTop),
+        // 隣のディスプレイへお出かけ（画面が 2 枚以上つながっているときだけ）
+        .init(activity: .crossScreen, pose: .walk,   weight: 6,  duration: 90...90,  cooldown: 90,  placement: .screenFloor),
     ]
 }
 
@@ -44,11 +46,15 @@ public struct BehaviorContext {
     public var energy: Double          // 0(眠い)...1(元気)
     public var hour: Int               // 0...23
     public var onWindow: Bool
+    /// 今いる画面の左右どちらかに、歩いて行ける隣の画面がある
+    public var canCrossScreen: Bool
     public var last: Activity?
     public var available: (BehaviorSpec) -> Bool
 
-    public init(energy: Double, hour: Int, onWindow: Bool, last: Activity?, available: @escaping (BehaviorSpec) -> Bool) {
-        self.energy = energy; self.hour = hour; self.onWindow = onWindow; self.last = last; self.available = available
+    public init(energy: Double, hour: Int, onWindow: Bool, canCrossScreen: Bool = false, last: Activity?,
+                available: @escaping (BehaviorSpec) -> Bool) {
+        self.energy = energy; self.hour = hour; self.onWindow = onWindow; self.canCrossScreen = canCrossScreen
+        self.last = last; self.available = available
     }
 }
 
@@ -69,6 +75,7 @@ public struct BehaviorPlanner: Sendable {
         case .windowTop where !ctx.onWindow: return 0
         default: break
         }
+        if s.activity == .crossScreen && !ctx.canCrossScreen { return 0 }
         let tired = 1 - ctx.energy
         let night = ctx.hour < 6 || ctx.hour >= 23
         let morning = (6..<10).contains(ctx.hour)
@@ -76,7 +83,7 @@ public struct BehaviorPlanner: Sendable {
         switch s.activity {
         case .doze:  w += 30 * tired * tired + (night ? 8 : 0)
         case .sleep: w += 50 * pow(tired, 3) + (night ? 15 : 0)
-        case .walk, .goToEdge: w *= (0.4 + ctx.energy) * (night ? 0.6 : 1)
+        case .walk, .goToEdge, .crossScreen: w *= (0.4 + ctx.energy) * (night ? 0.6 : 1)
         case .sit:   w *= ctx.onWindow ? 2.5 : 1; w *= 1 + tired
         case .stretch:
             if morning { w *= 2 }

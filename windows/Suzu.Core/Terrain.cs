@@ -1,6 +1,10 @@
 namespace Suzu.Core;
 
-public readonly record struct ScreenInfo(uint Id, RectD VisibleFrame);
+/// <param name="Frame">画面全体（隣の画面との接し方を調べるのに使う）。省略時は VisibleFrame と同じ。</param>
+public readonly record struct ScreenInfo(uint Id, RectD VisibleFrame, RectD? Frame = null)
+{
+    public RectD FullFrame => Frame ?? VisibleFrame;
+}
 
 public readonly record struct WindowInfo(uint Id, RectD Frame);
 
@@ -51,8 +55,11 @@ public sealed class Terrain
         {
             var f = s.VisibleFrame;
             floors.Add(new Floor(SurfaceOwner.Screen(s.Id), f.MinY, f.MinX, f.MaxX));
-            walls.Add(new Wall(SurfaceOwner.Screen(s.Id), WallSide.Left, f.MinX, f.MinY, f.MaxY));
-            walls.Add(new Wall(SurfaceOwner.Screen(s.Id), WallSide.Right, f.MaxX, f.MinY, f.MaxY));
+            // 隣の画面と接している辺は「壁」ではなく通り道
+            if (Adjacent(s, WallSide.Left, screens) == null)
+                walls.Add(new Wall(SurfaceOwner.Screen(s.Id), WallSide.Left, f.MinX, f.MinY, f.MaxY));
+            if (Adjacent(s, WallSide.Right, screens) == null)
+                walls.Add(new Wall(SurfaceOwner.Screen(s.Id), WallSide.Right, f.MaxX, f.MinY, f.MaxY));
         }
         for (int i = 0; i < windows.Count; i++)
         {
@@ -122,6 +129,56 @@ public sealed class Terrain
         foreach (var s in Screens)
             if (s.VisibleFrame.Inset(-1, -1).Contains(p)) return s;
         return null;
+    }
+
+    public ScreenInfo? ScreenById(uint id)
+    {
+        foreach (var s in Screens) if (s.Id == id) return s;
+        return null;
+    }
+
+    /// <summary>s の左右どちらかの辺に接している画面（マルチディスプレイの乗り継ぎ用）</summary>
+    public ScreenInfo? AdjacentScreen(ScreenInfo s, WallSide side) => Adjacent(s, side, Screens);
+
+    internal static ScreenInfo? Adjacent(ScreenInfo s, WallSide side, IReadOnlyList<ScreenInfo> screens)
+    {
+        ScreenInfo? best = null;
+        double bestD = double.MaxValue;
+        var sf = s.FullFrame;
+        foreach (var o in screens)
+        {
+            if (o.Id == s.Id) continue;
+            var of = o.FullFrame;
+            // 物理ピクセル単位なので少し余裕を持たせる
+            bool touches = side == WallSide.Right ? Math.Abs(of.MinX - sf.MaxX) <= 2 : Math.Abs(of.MaxX - sf.MinX) <= 2;
+            if (!touches || of.MaxY <= sf.MinY || of.MinY >= sf.MaxY) continue;
+            // 複数あるときは床の高さが近い方
+            double d = Math.Abs(o.VisibleFrame.MinY - s.VisibleFrame.MinY);
+            if (d < bestD) { bestD = d; best = o; }
+        }
+        return best;
+    }
+
+    /// <summary>画面の床（スクリーン下端）</summary>
+    public Floor? ScreenFloor(ScreenInfo s)
+    {
+        foreach (var f in Floors) if (f.Owner == SurfaceOwner.Screen(s.Id)) return f;
+        return null;
+    }
+
+    /// <summary>x を横方向に含む画面のうち、p に縦方向で最も近いもの（なければ最寄りの画面）</summary>
+    public ScreenInfo? ScreenInColumn(PointD p)
+    {
+        ScreenInfo? best = null;
+        double bestD = double.MaxValue;
+        foreach (var s in Screens)
+        {
+            var f = s.FullFrame;
+            if (p.X < f.MinX || p.X > f.MaxX) continue;
+            double d = Dist(s.VisibleFrame, p);
+            if (d < bestD) { bestD = d; best = s; }
+        }
+        return best ?? NearestScreen(p);
     }
 
     /// <summary>p に最も近いスクリーン（画面外に出てしまった場合の救済用）</summary>

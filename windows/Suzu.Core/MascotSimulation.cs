@@ -116,7 +116,8 @@ public sealed class MascotSimulation
                 else StartFalling(PointD.Zero);
                 break;
         }
-        if (Terrain.Screens.Count > 0 && Terrain.ScreenContaining(Position) == null && Motion is not Motion.Dragged)
+        // 落下中（隣の画面へ跳び移っている途中を含む）は着地か Step 側の救済に任せる
+        if (Terrain.Screens.Count > 0 && Terrain.ScreenContaining(Position) == null && Motion is not (Motion.Dragged or Motion.Falling))
             Rescue();
     }
 
@@ -263,7 +264,7 @@ public sealed class MascotSimulation
 
         switch (Activity)
         {
-            case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang:
+            case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen:
             {
                 if (_targetX is not { } tx) { FinishActivity(); return; }
                 double dir = tx > Position.X ? 1 : -1;
@@ -275,6 +276,7 @@ public sealed class MascotSimulation
                 if (!floor.Contains(nx) && Activity != Activity.JumpDown)
                 {
                     if (Terrain.FloorAt(nx, floor.Y) is { } next) Motion = new Motion.Grounded(next);
+                    else if (Activity == Activity.CrossScreen && HopToNeighborScreen(floor, dir)) return;
                     else { Position = Position with { X = Math.Clamp(nx, floor.MinX, floor.MaxX) }; Arrive(); return; }
                 }
                 if (Activity == Activity.JumpDown && !floor.Contains(nx))
@@ -340,6 +342,38 @@ public sealed class MascotSimulation
         }
     }
 
+    /// <summary>高さの違う隣の画面の床へ跳び移る（下なら飛び降り、上ならジャンプ）。隣がなければ false。</summary>
+    private bool HopToNeighborScreen(Floor floor, double dir)
+    {
+        if (floor.Owner.IsWindow || Terrain.ScreenById(floor.Owner.Id) is not { } s) return false;
+        if (Terrain.AdjacentScreen(s, dir > 0 ? WallSide.Right : WallSide.Left) is not { } n) return false;
+        if (Terrain.ScreenFloor(n) is not { } nf || nf.Width <= Cfg.BodyWidth * 2) return false;
+        double inset = Cfg.BodyWidth / 2 + 40 * S;
+        double landX = dir > 0 ? nf.MinX + inset : nf.MaxX - inset;
+        double g = Cfg.Gravity * S;
+        double rise = nf.Y - floor.Y;
+        double peak = Math.Max(rise, 0) + 40 * S;   // 床より少し高く跳んでから降りる
+        double vy = Math.Sqrt(2 * g * peak);
+        double flight = vy / g + Math.Sqrt(2 * (peak - rise) / g);
+        // 空中では横速度が 0.6^t で減衰するので、その分を見込んで初速を決める
+        double decay = 1 - Math.Pow(0.6, flight);
+        double vx = (landX - Position.X) * -Math.Log(0.6) / Math.Max(decay, 0.05);
+        StartFalling(new PointD(vx, vy));
+        Facing = dir > 0 ? Facing.Right : Facing.Left;
+        return true;
+    }
+
+    /// <summary>スクリーンの床にいるとき、隣の画面がつながっている側</summary>
+    private List<WallSide> NeighborSides(Floor f)
+    {
+        var sides = new List<WallSide>();
+        if (f.Owner.IsWindow || Terrain.ScreenById(f.Owner.Id) is not { } s) return sides;
+        foreach (var side in new[] { WallSide.Left, WallSide.Right })
+            if (Terrain.AdjacentScreen(s, side) is { } n && Terrain.ScreenFloor(n) is { } nf && nf.Width > Cfg.BodyWidth * 2)
+                sides.Add(side);
+        return sides;
+    }
+
     private void TrackMouse(double dt)
     {
         if (_mouse is not { } m) { _hoverTime = 0; return; }
@@ -362,7 +396,7 @@ public sealed class MascotSimulation
         if (Cfg.Paused) { SetActivity(Activity.Idle, 3); return; }
         if (Motion is not Motion.Grounded { Floor: var f }) return;
         var ctx = new BehaviorContext(Energy, HourProvider(), f.Owner.IsWindow, _lastActivity,
-            s => Cfg.AllowPlaceholders || Catalog.Has(s.Pose));
+            s => Cfg.AllowPlaceholders || Catalog.Has(s.Pose), NeighborSides(f).Count > 0);
         var (a, d) = _planner.Choose(ctx, _clock, _rng);
         SetActivity(a, d);
         Prepare(a, f);
@@ -387,9 +421,22 @@ public sealed class MascotSimulation
                 break;
             case Activity.Climb:
             {
-                // 近い方の壁へ
+                // 近い方の壁へ（隣の画面とつながっている辺には壁がないので、その場合は反対側へ）
+                bool HasWall(double x) => Terrain.Walls.Any(w => Math.Abs(w.X - x) < 1 && w.MinY <= f.Y + 1);
                 bool toLeft = Position.X - lo0 < hi0 - Position.X;
-                _targetX = toLeft ? lo0 + margin : hi0 - margin;
+                if (!HasWall(toLeft ? lo0 : hi0)) toLeft = !toLeft;
+                _targetX = HasWall(toLeft ? lo0 : hi0) ? (toLeft ? lo0 + margin : hi0 - margin) : null;
+                break;
+            }
+            case Activity.CrossScreen:
+            {
+                _targetX = null;
+                var sides = NeighborSides(f);
+                if (sides.Count == 0 || Terrain.ScreenById(f.Owner.Id) is not { } s) break;
+                var side = sides[_rng.NextInt(sides.Count)];
+                if (Terrain.AdjacentScreen(s, side) is not { } n || Terrain.ScreenFloor(n) is not { } nf) break;
+                double depth = _rng.Range(160, 480) * S;
+                _targetX = side == WallSide.Right ? Math.Min(nf.MinX + depth, nf.MaxX - margin) : Math.Max(nf.MaxX - depth, nf.MinX + margin);
                 break;
             }
             case Activity.JumpDown:
@@ -439,7 +486,7 @@ public sealed class MascotSimulation
     {
         Activity = a;
         _timeLeft = duration;
-        if (a is not (Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang)) _targetX = null;
+        if (a is not (Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen)) _targetX = null;
     }
 
     private void StartFalling(PointD v)
@@ -459,11 +506,13 @@ public sealed class MascotSimulation
 
     private void ClampToScreensHorizontally()
     {
-        var s = Terrain.ScreenContaining(Position) ?? Terrain.NearestScreen(Position);
-        if (s is not { } screen) return;
+        // 隣の画面とつながっている辺は素通りできる
+        if (Terrain.ScreenInColumn(Position) is not { } screen) return;
         double half = Cfg.BodyWidth / 2;
         var v = screen.VisibleFrame;
-        double x = Math.Min(Math.Max(Position.X, v.MinX + half), v.MaxX - half);
+        double lo = Terrain.AdjacentScreen(screen, WallSide.Left) == null ? v.MinX + half : double.NegativeInfinity;
+        double hi = Terrain.AdjacentScreen(screen, WallSide.Right) == null ? v.MaxX - half : double.PositiveInfinity;
+        double x = Math.Min(Math.Max(Position.X, lo), hi);
         double y = Position.Y > v.MaxY - Cfg.BodyHeight ? v.MaxY - Cfg.BodyHeight : Position.Y;
         Position = new PointD(x, y);
     }
@@ -511,7 +560,7 @@ public sealed class MascotSimulation
             default:
                 switch (Activity)
                 {
-                    case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang:
+                    case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen:
                         pose = _targetX == null ? Pose.Stand : Pose.Walk; break;
                     case Activity.Sit: pose = Pose.Sit; break;
                     case Activity.Sleep: pose = Pose.Sleep; emote = Emote.Sleepy; break;

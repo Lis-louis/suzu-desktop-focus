@@ -31,7 +31,7 @@ internal sealed class EnvironmentSensor
     {
         var list = new List<ScreenInfo>();
         foreach (var s in Screen.AllScreens)
-            list.Add(new ScreenInfo(StableId(s.DeviceName), ToSim(s.WorkingArea)));
+            list.Add(new ScreenInfo(StableId(s.DeviceName), ToSim(s.WorkingArea), ToSim(s.Bounds)));
         return list;
     }
 

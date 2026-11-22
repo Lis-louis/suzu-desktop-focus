@@ -319,6 +319,65 @@ public class SimulationTests
     }
 }
 
+public class MultiScreenTests
+{
+    // 左：タスクバーありの画面（床 80）、右：もう 1 枚のモニタ（床の高さを変えて試す）
+    private static readonly ScreenInfo Left = new(1, new RectD(0, 80, 1600, 900), new RectD(0, 0, 1600, 1000));
+    private static readonly SpriteManifest Manifest = new([
+        new(Pose.Stand, Facing.Front, ["front"]),
+        new(Pose.Walk, Facing.Right, ["side_right"], bob: true),
+    ]);
+
+    private static ScreenInfo Right(double floorY) => new(2, new RectD(1600, floorY, 1920, 1000), new RectD(1600, floorY, 1920, 1025));
+
+    private static MascotSimulation MakeSim(params ScreenInfo[] screens)
+    {
+        var sim = new MascotSimulation(new MascotSimulation.Config(), new SpriteCatalog(Manifest), seed: 7) { HourProvider = () => 14 };
+        sim.UpdateTerrain(Terrain.Build(screens, [], 200));
+        return sim;
+    }
+
+    [Fact]
+    public void SharedEdgeIsNotAWall()
+    {
+        var t = Terrain.Build([Left, Right(0)], [], 200);
+        Assert.Equal(2, t.Walls.Count);
+        Assert.Equal(2u, t.AdjacentScreen(Left, WallSide.Right)?.Id);
+        Assert.Null(t.AdjacentScreen(Left, WallSide.Left));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(300)]
+    [InlineData(80)]
+    public void CrossesToNeighborScreen(double floorY)
+    {
+        var sim = MakeSim(Left, Right(floorY));
+        sim.Cfg.Paused = true;
+        sim.Place(new PointD(1200, 80));
+        sim.Force(Activity.CrossScreen);
+        Assert.Equal(Activity.CrossScreen, sim.Activity);
+        for (int i = 0; i < 30 * 40; i++)
+        {
+            sim.Step(1.0 / 30);
+            if (sim.Position.X > 1600 && sim.Motion is Motion.Grounded) break;
+        }
+        var g = Assert.IsType<Motion.Grounded>(sim.Motion);
+        Assert.Equal(SurfaceOwner.Screen(2), g.Floor.Owner);
+        Assert.Equal(floorY, sim.Position.Y, 2);
+    }
+
+    [Fact]
+    public void EventuallyVisitsOtherScreenOnItsOwn()
+    {
+        var sim = MakeSim(Left, Right(0));
+        sim.Place(new PointD(800, 80));
+        bool visited = false;
+        for (int i = 0; i < 30 * 60 * 30 && !visited; i++) { sim.Step(1.0 / 30); visited = sim.Position.X > 1600; }
+        Assert.True(visited);
+    }
+}
+
 public class BridgeTests
 {
     [Fact]

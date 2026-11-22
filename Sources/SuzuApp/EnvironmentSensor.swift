@@ -12,7 +12,7 @@ final class EnvironmentSensor {
     func screens() -> [ScreenInfo] {
         NSScreen.screens.map { s in
             let id = (s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
-            return ScreenInfo(id: id, visibleFrame: s.visibleFrame)
+            return ScreenInfo(id: id, visibleFrame: s.visibleFrame, frame: s.frame)
         }
     }
 
