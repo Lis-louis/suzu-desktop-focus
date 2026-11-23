@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="128" alt="Suzu icon">
+  <img src="icon/suzu-desktop-focus.svg" width="128" alt="Suzu icon">
 </p>
 
 <h1 align="center">Suzu 鈴 — a desktop mascot for macOS and Windows</h1>

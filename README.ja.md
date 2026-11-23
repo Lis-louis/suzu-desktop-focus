@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/icon.png" width="128" alt="鈴 アイコン">
+  <img src="icon/suzu-desktop-focus.svg" width="128" alt="鈴 アイコン">
 </p>
 
 <h1 align="center">鈴 Suzu — macOS / Windows デスクトップマスコット</h1>
