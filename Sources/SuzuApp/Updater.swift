@@ -132,10 +132,11 @@ final class Updater: ObservableObject {
             } else if problem == nil {
                 problem = "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)"
             }
+            let result = moved, message = problem ?? "unknown"
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.progressObservation = nil
-                if let moved { self.ready(moved) } else { self.fail(manual, problem ?? "unknown") }
+                if let result { self.ready(result) } else { self.fail(manual, message) }
             }
         }
         progressObservation = task.progress.observe(\.fractionCompleted) { [weak self] p, _ in

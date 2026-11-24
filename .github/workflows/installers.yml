@@ -9,7 +9,7 @@ name: Installers
 on:
   workflow_dispatch:
   push:
-    branches: [main, mac-updater]  # mac-updater は Mac 版の自動更新の作業用（終わったら外す）
+    branches: [main]
   pull_request:
 
 permissions:

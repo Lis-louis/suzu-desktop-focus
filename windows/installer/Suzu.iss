@@ -2,7 +2,7 @@
 ;
 ; 通常は windows\build.ps1 から実行する（exe の作成 → 使用許諾の文書の用意 → このスクリプトのコンパイル）。
 ; 手動で実行する場合:
-;   iscc /DAppVersion=0.2.0 /DPublishDir=..\..\build\windows\publish /DLicenseDir=..\..\build\windows\license windows\installer\Suzu.iss
+;   iscc /DAppVersion=0.3.0 /DPublishDir=..\..\build\windows\publish /DLicenseDir=..\..\build\windows\license windows\installer\Suzu.iss
 ;
 ; ウィザードの流れ: 言語の選択 → ようこそ → 使用許諾（MIT ＋ キャラクター利用ガイドライン）
 ;                   → インストール先 → 追加のタスク（デスクトップアイコン・自動起動）→ 確認 → インストール → 完了（鈴を起動）
@@ -12,7 +12,7 @@
 ; 前回のインストール先・言語・タスクはそのまま引き継がれる。/RELAUNCH=1 のときは終わったら鈴を起動し直す。
 
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.3.0"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\..\build\windows\publish"

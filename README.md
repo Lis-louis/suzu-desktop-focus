@@ -49,13 +49,14 @@ To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On
 > macOS: if the .pkg is blocked, go to **System Settings → Privacy & Security** and click **Open Anyway**.
 > Windows: if SmartScreen appears, click **More info → Run anyway**.
 
-### Automatic updates (Windows, 0.2.0 and later)
+### Automatic updates (Windows 0.2.0+, macOS 0.3.0+)
 
-On Windows, Suzu checks for a new version 10 seconds after it starts and every 3 hours after that, and downloads it in the background (you can also check right away with **Check for updates** under Settings → **App**).
-When the update is ready, a notification appears and **Restart to update** shows up in the Control Panel and the tray menu. Click it to install silently and restart Suzu. If you quit the app instead, the update is installed as it quits. Your settings are kept.
+Suzu checks for a new version 10 seconds after it starts and every 3 hours after that, and downloads it in the background (you can also check right away with **Check for updates** under Settings → **App**). Your settings are kept.
 
-Version 0.1.0 has no automatic updates, so if you are on 0.1.0, install the new version manually once.
-Automatic updates for macOS are in progress. Until then, install the new `.pkg` from Releases.
+- **Windows**: when the update is ready, a notification appears and **Restart to update** shows up in the Control Panel and the tray menu. Click it to install silently and restart Suzu. If you quit the app instead, the update is installed as it quits
+- **macOS**: when the update is ready, Suzu tells you in a speech bubble and **Install Update** shows up in the Control Panel and the menu bar menu. Click it to open the installer and follow the steps (an administrator password is needed). Suzu restarts when the installation finishes
+
+If you are on a version without automatic updates (Windows 0.1.0, macOS 0.2.0 or earlier), install the new version manually once.
 
 ## Requirements
 
@@ -151,7 +152,7 @@ The version number comes from the `VERSION` file.
 Pushing to GitHub runs the [Installers](.github/workflows/installers.yml) workflow, which builds both installers on GitHub's macOS and Windows machines and uploads them as Artifacts (useful as a build check).
 
 **When you release a new version**, bump `VERSION` (for example `0.2.0` → `0.3.0`) and push to main. The workflow tests, builds both installers, and publishes them to
-[Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases) under the tag `v<version>`; installed copies of Suzu for Windows then update themselves.
+[Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases) under the tag `v<version>`; installed copies of Suzu then update themselves.
 Pushes that don't bump `VERSION` don't create a release. If a run fails partway, use Actions → "Installers" → **Run workflow** to upload the missing files and publish.
 The installers in the top folder (0.1.0) are not updated automatically.
 
