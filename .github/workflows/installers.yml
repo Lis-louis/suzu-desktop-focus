@@ -81,7 +81,8 @@ jobs:
 
   macos:
     name: macOS (.pkg installer)
-    runs-on: macos-15
+    # macos-15 は割り当てられずに打ち切られるようになった（2026-11）。その時点で最新の Mac を使う
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 

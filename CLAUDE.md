@@ -22,6 +22,8 @@
   テスト → Windows（`SuzuSetup-<v>-x64.exe`・portable zip）と Mac（`Suzu-<v>.pkg`）をビルド →
   Release（タグ `v<v>`）を**下書きで作ってファイルを全部上げてから公開**する。
   公開済みの版なら Release は作らない。失敗したら Actions → Installers → Run workflow で上げ直せる。
+- Mac のビルドは `runs-on: macos-latest`。`macos-15` を指定していたら機械が割り当てられず 15 分で cancelled になるようになった
+  （2026-11、0.5.3 で 2 回続いた）。Mac のジョブが `runner_name` 空のまま cancelled なら、Mac の機械の指定を疑う。
 - 直下の `SuzuSetup-0.1.0.exe`・`Suzu-0.1.0.pkg` は 0.1.0 を手で入れる人のために残している。新しい版は直下に置かない。
 
 ## 自動更新
