@@ -47,6 +47,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         case .hang: pick("ぶら下がっている", "Hanging")
         case .crossScreen: pick("隣の画面へお出かけ中", "Heading over to the other screen")
         case .playBall: pick("ボールで遊んでいる", "Playing with a ball")
+        case .jumpUp: pick("窓に跳び乗ろうとしている", "About to hop onto a window")
         case .react: pick("反応している", "Reacting")
         case .dragged: pick("つままれている", "Being carried")
         case .falling: pick("落ちている", "Falling")

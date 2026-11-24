@@ -6,11 +6,13 @@ public enum Activity: String, CaseIterable, Sendable {
     case idle, walk, lookAround, turnAway, doze, sit, sleep, stretch, joy, goToEdge, jumpDown, climb, hang, crossScreen
     // ボールを追いかけて蹴る（ボールがなければ自分で出してくる）
     case playBall
+    // 上にある窓（ウィンドウの上端）へ跳び乗る
+    case jumpUp
     // 外部要因（自律選択されない）
     case react, dragged, falling
 
     public static let autonomous: [Activity] = [.idle, .walk, .lookAround, .turnAway, .doze, .sit, .sleep,
-                                                .stretch, .joy, .goToEdge, .jumpDown, .climb, .hang, .crossScreen, .playBall]
+                                                .stretch, .joy, .goToEdge, .jumpDown, .climb, .hang, .crossScreen, .playBall, .jumpUp]
 }
 
 /// 行動の発生条件・確率・継続時間の定義。数値調整はここに集約する。
@@ -42,6 +44,8 @@ public struct BehaviorSpec: Sendable {
         .init(activity: .crossScreen, pose: .walk,   weight: 6,  duration: 90...90,  cooldown: 90,  placement: .screenFloor),
         // ボール遊び（設定でオフにできる）
         .init(activity: .playBall,   pose: .walk,    weight: 7,  duration: 25...50,  cooldown: 150, placement: .anywhere),
+        // 窓へ跳び乗る（跳び乗れる窓があるときだけ）
+        .init(activity: .jumpUp,     pose: .walk,    weight: 8,  duration: 30...30,  cooldown: 25,  placement: .anywhere),
     ]
 }
 
@@ -54,13 +58,15 @@ public struct BehaviorContext {
     public var canCrossScreen: Bool
     /// ボール遊びをしてよい（設定でオン）
     public var canPlayBall: Bool
+    /// 跳び乗れる窓が近くにある
+    public var canJumpUp: Bool
     public var last: Activity?
     public var available: (BehaviorSpec) -> Bool
 
     public init(energy: Double, hour: Int, onWindow: Bool, canCrossScreen: Bool = false, canPlayBall: Bool = false,
-                last: Activity?, available: @escaping (BehaviorSpec) -> Bool) {
+                canJumpUp: Bool = false, last: Activity?, available: @escaping (BehaviorSpec) -> Bool) {
         self.energy = energy; self.hour = hour; self.onWindow = onWindow; self.canCrossScreen = canCrossScreen
-        self.canPlayBall = canPlayBall
+        self.canPlayBall = canPlayBall; self.canJumpUp = canJumpUp
         self.last = last; self.available = available
     }
 }
@@ -84,6 +90,7 @@ public struct BehaviorPlanner: Sendable {
         }
         if s.activity == .crossScreen && !ctx.canCrossScreen { return 0 }
         if s.activity == .playBall && !ctx.canPlayBall { return 0 }
+        if s.activity == .jumpUp && !ctx.canJumpUp { return 0 }
         let tired = 1 - ctx.energy
         let night = ctx.hour < 6 || ctx.hour >= 23
         let morning = (6..<10).contains(ctx.hour)
@@ -91,7 +98,7 @@ public struct BehaviorPlanner: Sendable {
         switch s.activity {
         case .doze:  w += 30 * tired * tired + (night ? 8 : 0)
         case .sleep: w += 50 * pow(tired, 3) + (night ? 15 : 0)
-        case .walk, .goToEdge, .crossScreen: w *= (0.4 + ctx.energy) * (night ? 0.6 : 1)
+        case .walk, .goToEdge, .crossScreen, .jumpUp: w *= (0.4 + ctx.energy) * (night ? 0.6 : 1)
         case .sit:   w *= ctx.onWindow ? 2.5 : 1; w *= 1 + tired
         case .stretch:
             if morning { w *= 2 }

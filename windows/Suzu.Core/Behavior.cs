@@ -7,6 +7,8 @@ public enum Activity
     Idle, Walk, LookAround, TurnAway, Doze, Sit, Sleep, Stretch, Joy, GoToEdge, JumpDown, Climb, Hang, CrossScreen,
     // ボールを追いかけて蹴る（ボールがなければ自分で出してくる）
     PlayBall,
+    // 上にある窓（ウィンドウの上端）へ跳び乗る
+    JumpUp,
     // 外部要因（自律選択されない）
     React, Dragged, Falling,
 }
@@ -43,14 +45,17 @@ public readonly record struct BehaviorSpec(
         new(Activity.CrossScreen, Pose.Walk,   6,  90, 90,     90,  Placement.ScreenFloor),
         // ボール遊び（設定でオフにできる）
         new(Activity.PlayBall,   Pose.Walk,    7,  25, 50,     150, Placement.Anywhere),
+        // 窓へ跳び乗る（跳び乗れる窓があるときだけ）
+        new(Activity.JumpUp,     Pose.Walk,    8,  30, 30,     25,  Placement.Anywhere),
     ];
 }
 
 /// <summary>行動選択に使う状況</summary>
 /// <param name="CanCrossScreen">今いる画面の左右どちらかに、歩いて行ける隣の画面がある</param>
 /// <param name="CanPlayBall">ボール遊びをしてよい（設定でオン）</param>
+/// <param name="CanJumpUp">跳び乗れる窓が近くにある</param>
 public sealed record BehaviorContext(double Energy, int Hour, bool OnWindow, Activity? Last, Func<BehaviorSpec, bool> Available,
-                                     bool CanCrossScreen = false, bool CanPlayBall = false);
+                                     bool CanCrossScreen = false, bool CanPlayBall = false, bool CanJumpUp = false);
 
 /// <summary>重み付き抽選＋状況補正＋クールダウンで、完全なランダムにならない行動選択を行う。</summary>
 public sealed class BehaviorPlanner
@@ -70,6 +75,7 @@ public sealed class BehaviorPlanner
         if (s.Placement == Placement.WindowTop && !ctx.OnWindow) return 0;
         if (s.Activity == Activity.CrossScreen && !ctx.CanCrossScreen) return 0;
         if (s.Activity == Activity.PlayBall && !ctx.CanPlayBall) return 0;
+        if (s.Activity == Activity.JumpUp && !ctx.CanJumpUp) return 0;
 
         double tired = 1 - ctx.Energy;
         bool night = ctx.Hour < 6 || ctx.Hour >= 23;
@@ -81,7 +87,8 @@ public sealed class BehaviorPlanner
             case Activity.Sleep: w += 50 * Math.Pow(tired, 3) + (night ? 15 : 0); break;
             case Activity.Walk:
             case Activity.GoToEdge:
-            case Activity.CrossScreen: w *= (0.4 + ctx.Energy) * (night ? 0.6 : 1); break;
+            case Activity.CrossScreen:
+            case Activity.JumpUp: w *= (0.4 + ctx.Energy) * (night ? 0.6 : 1); break;
             case Activity.Sit: w *= ctx.OnWindow ? 2.5 : 1; w *= 1 + tired; break;
             case Activity.Stretch:
                 if (morning) w *= 2;

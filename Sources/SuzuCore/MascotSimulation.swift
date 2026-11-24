@@ -71,6 +71,8 @@ public final class MascotSimulation {
     private var hoverTime: Double = 0
     private var transientEmote: (Emote, Double)?
     private var kickCooldown: Double = 0
+    /// 跳び乗る先の窓と着地点
+    private var jumpTarget: (floor: Floor, landX: CGFloat)?
     private var running = false
 
     public init(config: Config = Config(), catalog: SpriteCatalog, seed: UInt64 = UInt64(Date().timeIntervalSince1970)) {
@@ -258,7 +260,7 @@ public final class MascotSimulation {
         timeLeft -= dt
 
         switch activity {
-        case .walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen:
+        case .walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen, .jumpUp:
             guard let tx = targetX else { finishActivity(); return }
             let dir: CGFloat = tx > position.x ? 1 : -1
             facing = dir > 0 ? .right : .left
@@ -362,17 +364,49 @@ public final class MascotSimulation {
               let nf = terrain.screenFloor(of: n), nf.width > config.bodyWidth * 2 else { return false }
         let inset = config.bodyWidth / 2 + 40
         let landX = dir > 0 ? nf.minX + inset : nf.maxX - inset
+        jump(from: floor, toY: nf.y, landX: landX)
+        facing = dir > 0 ? .right : .left
+        return true
+    }
+
+    /// 跳び乗れる窓（今の床より上にあり、歩いて真下まで行けるもの）
+    private func jumpUpCandidates(from f: Floor) -> [(floor: Floor, lo: CGFloat, hi: CGFloat)] {
+        let range = reachableRange(from: f)
+        let margin = config.bodyWidth / 2
+        return terrain.floors.compactMap { o in
+            guard case .window = o.owner, o.y > f.y + 20, o.y - f.y <= config.bodyHeight * 6,
+                  o.width >= config.bodyWidth * 1.5 else { return nil }
+            let lo = max(o.minX + margin, range.lowerBound + margin), hi = min(o.maxX - margin, range.upperBound - margin)
+            return lo < hi ? (o, lo, hi) : nil
+        }
+    }
+
+    /// 窓へ跳び乗る（arrive から）。窓が動いた・消えたときは跳ばずに終わる。
+    private func jumpUpOntoWindow(from f: Floor) {
+        guard let t = jumpTarget,
+              let dest = terrain.floors.first(where: { $0.owner == t.floor.owner && $0.contains(x: t.landX) && $0.y > f.y + 20 })
+        else { jumpTarget = nil; finishActivity(); return }
+        jumpTarget = nil
+        facing = t.landX >= position.x ? .right : .left
+        jump(from: f, toY: dest.y, landX: t.landX)
+    }
+
+    /// 床から跳んで、高さ toY の床の landX に降りる
+    private func jump(from floor: Floor, toY: CGFloat, landX: CGFloat) {
         let g = config.gravity
-        let rise = nf.y - floor.y
-        let peak = max(rise, 0) + 40           // 床より少し高く跳んでから降りる
-        let vy = sqrt(2 * g * peak)
+        let rise = toY - floor.y
+        var peak = max(rise, 0) + 40           // 床より少し高く跳んでから降りる
+        // 画面の上端より上へは行けない（頭がつかえる）ので、跳ぶ高さを抑える
+        if let s = terrain.screen(columnContaining: position) {
+            peak = min(peak, max(rise + 5, s.visibleFrame.maxY - config.bodyHeight - floor.y))
+        }
+        // 1 コマずつ進める計算では頂点が理論より少し低くなる（30fps で約 g/60 ぶん）ので、初速を少し足す
+        let vy = sqrt(2 * g * peak) + g / 60
         let flight = vy / g + sqrt(2 * (peak - rise) / g)
         // 空中では横速度が 0.6^t で減衰するので、その分を見込んで初速を決める
         let decay = 1 - pow(0.6, flight)
         let vx = (landX - position.x) * CGFloat(-log(0.6)) / CGFloat(max(decay, 0.05))
         startFalling(CGVector(dx: vx, dy: vy))
-        facing = dir > 0 ? .right : .left
-        return true
     }
 
     /// 歩行の目的地に到着
@@ -394,6 +428,8 @@ public final class MascotSimulation {
             position = CGPoint(x: side == .left ? f.minX : f.maxX, y: f.y - config.bodyHeight * 0.85)
             motion = .hanging(f, side: side)
             facing = .front
+        case .jumpUp:
+            jumpUpOntoWindow(from: f)
         default:
             finishActivity()
         }
@@ -422,7 +458,8 @@ public final class MascotSimulation {
         let onWindow: Bool = { if case .window = f.owner { return true } else { return false } }()
         let canCross = neighborSides(of: f).isEmpty == false
         let ctx = BehaviorContext(energy: energy, hour: hourProvider(), onWindow: onWindow,
-                                  canCrossScreen: canCross, canPlayBall: config.allowBallPlay, last: lastActivity) { [catalog, config] s in
+                                  canCrossScreen: canCross, canPlayBall: config.allowBallPlay,
+                                  canJumpUp: !jumpUpCandidates(from: f).isEmpty, last: lastActivity) { [catalog, config] s in
             config.allowPlaceholders || catalog.has(s.pose)
         }
         let (a, d) = planner.choose(in: ctx, now: clock, rng: &rng)
@@ -464,6 +501,15 @@ public final class MascotSimulation {
             targetX = toLeft ? f.minX + margin : f.maxX - margin
         case .turnAway:
             if catalog.has(.stand, facing: .back) { facing = .back }
+        case .jumpUp:
+            // 窓を 1 つ選び、その真下（少し手前）まで歩いてから跳ぶ
+            targetX = nil
+            jumpTarget = nil
+            guard let c = jumpUpCandidates(from: f).randomElement(using: &rng) else { break }
+            let landX = CGFloat.random(in: c.lo...c.hi, using: &rng)
+            let side: CGFloat = position.x < landX ? -1 : 1
+            targetX = min(max(landX + side * config.bodyWidth * 0.6, range.lowerBound + margin), range.upperBound - margin)
+            jumpTarget = (c.floor, landX)
         case .playBall:
             targetX = nil
             kickCooldown = 0.6
@@ -502,7 +548,7 @@ public final class MascotSimulation {
     private func setActivity(_ a: Activity, duration: Double) {
         activity = a
         timeLeft = duration
-        if ![.walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen].contains(a) { targetX = nil }
+        if ![.walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen, .jumpUp].contains(a) { targetX = nil }
     }
 
     private func startFalling(_ v: CGVector) {
@@ -558,7 +604,7 @@ public final class MascotSimulation {
         case .hanging: pose = .hang
         case .grounded:
             switch activity {
-            case .walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen: pose = targetX == nil ? .stand : .walk
+            case .walk, .goToEdge, .jumpDown, .climb, .hang, .crossScreen, .jumpUp: pose = targetX == nil ? .stand : .walk
             case .sit: pose = .sit
             case .sleep: pose = .sleep; emote = .sleepy
             case .doze: pose = .stand; emote = .sleepy

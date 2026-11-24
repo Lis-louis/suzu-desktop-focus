@@ -123,7 +123,8 @@ public sealed class SpriteCatalog
         ResolvedSprite? Lookup(Pose p)
         {
             if (Find(p, facing) is { } e) return Make(e, false, p != pose);
-            if (AllowMirroring && facing.Opposite() != facing && Find(p, facing.Opposite()) is { } m)
+            // 歩くときは、正面のまま横に滑るより自然なので、設定に関係なく反対向きの絵を反転して使う
+            if ((AllowMirroring || p == Pose.Walk) && facing.Opposite() != facing && Find(p, facing.Opposite()) is { } m)
                 return Make(m, true, p != pose);
             return null;
         }

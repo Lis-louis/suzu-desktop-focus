@@ -78,10 +78,19 @@ public class SpriteCatalogTests
     [Fact]
     public void NoMirroringByDefault()
     {
-        var r = new SpriteCatalog(Manifest).Resolve(Pose.Walk, Facing.Left);
+        // 反転すると髪飾りの位置が逆になるため、立ち姿は既定では反転しない
+        var r = new SpriteCatalog(Manifest).Resolve(Pose.Stand, Facing.Left);
         Assert.False(r.Mirrored);
         Assert.Equal(new[] { "front" }, r.Frames);
         Assert.True(r.IsFallback);
+    }
+
+    [Fact]
+    public void WalkingLeftMirrorsEvenByDefault()
+    {
+        // 歩くときは正面のまま横に滑らないよう、右向きを反転して使う
+        var r = new SpriteCatalog(Manifest).Resolve(Pose.Walk, Facing.Left);
+        Assert.True(r.Mirrored); Assert.Equal(new[] { "side_right" }, r.Frames); Assert.False(r.IsFallback);
     }
 
     [Fact]
@@ -627,5 +636,71 @@ public class BallSpinTests
         b.Kick(new PointD(300, 0));
         for (int i = 0; i < 30; i++) b.Step(1.0 / 60, t, 2200);
         Assert.True(b.Angle > 0);
+    }
+}
+
+public class JumpUpTests
+{
+    private static readonly ScreenInfo Screen = new(1, new RectD(0, 80, 1600, 900));
+    private static readonly SpriteManifest Manifest = new([
+        new(Pose.Stand, Facing.Front, ["front"]),
+        new(Pose.Walk, Facing.Right, ["side_right"], bob: true),
+    ]);
+
+    private static MascotSimulation MakeSim(params WindowInfo[] windows)
+    {
+        var sim = new MascotSimulation(new MascotSimulation.Config(), new SpriteCatalog(Manifest), seed: 5) { HourProvider = () => 14 };
+        sim.UpdateTerrain(Terrain.Build([Screen], windows, 200));
+        sim.Place(new PointD(1300, 80));
+        return sim;
+    }
+
+    private static bool OnWindow(MascotSimulation sim, uint id) =>
+        sim.Motion is Motion.Grounded { Floor: var f } && f.Owner.IsWindow && f.Owner.Id == id;
+
+    private static bool RunUntilOnWindow(MascotSimulation sim, uint id, double seconds)
+    {
+        for (int i = 0; i < (int)(seconds * 30); i++)
+        {
+            sim.Step(1.0 / 30);
+            if (OnWindow(sim, id)) return true;
+        }
+        return false;
+    }
+
+    [Fact]
+    public void JumpsUpOntoWindow()
+    {
+        // 上端 y=500 の窓（x 200〜800）。鈴は窓の外（x=1300）の床にいる
+        var sim = MakeSim(new WindowInfo(10, new RectD(200, 200, 600, 300)));
+        sim.Force(Activity.JumpUp, 30);
+        Assert.True(RunUntilOnWindow(sim, 10, 40), $"position={sim.Position}");
+        Assert.Equal(500, sim.Position.Y, 1);
+    }
+
+    [Fact]
+    public void JumpsUpOntoHighWindowWithoutHittingTheCeiling()
+    {
+        // 頭上の余裕ぎりぎりの窓（上端 780 + 200 = 980 = 画面の上端）
+        var sim = MakeSim(new WindowInfo(11, new RectD(300, 300, 500, 480)));
+        sim.Force(Activity.JumpUp, 30);
+        Assert.True(RunUntilOnWindow(sim, 11, 40), $"position={sim.Position}");
+    }
+
+    [Fact]
+    public void EventuallyHopsOntoWindowOnItsOwn()
+    {
+        var sim = MakeSim(new WindowInfo(10, new RectD(200, 200, 900, 300)));
+        Assert.True(RunUntilOnWindow(sim, 10, 600));
+    }
+
+    [Fact]
+    public void PlannerNeedsAWindowToJumpOnto()
+    {
+        var p = new BehaviorPlanner();
+        var spec = p.Spec(Activity.JumpUp)!.Value;
+        var on = new BehaviorContext(0.8, 14, false, null, _ => true, CanJumpUp: true);
+        Assert.True(p.Weight(spec, on, 0) > 0);
+        Assert.Equal(0, p.Weight(spec, on with { CanJumpUp = false }, 0));
     }
 }

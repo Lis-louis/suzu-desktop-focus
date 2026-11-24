@@ -60,11 +60,17 @@ final class SpriteCatalogTests: XCTestCase {
     }
 
     func testNoMirroringByDefault() {
-        // 反転すると髪飾りの位置が逆になるため、既定では反転しない
-        let r = SpriteCatalog(manifest: manifest).resolve(.walk, facing: .left)
+        // 反転すると髪飾りの位置が逆になるため、立ち姿は既定では反転しない
+        let r = SpriteCatalog(manifest: manifest).resolve(.stand, facing: .left)
         XCTAssertFalse(r.mirrored)
         XCTAssertEqual(r.frames, ["front"])
         XCTAssertTrue(r.isFallback)
+    }
+
+    func testWalkingLeftMirrorsEvenByDefault() {
+        // 歩くときは正面のまま横に滑らないよう、右向きを反転して使う
+        let r = SpriteCatalog(manifest: manifest).resolve(.walk, facing: .left)
+        XCTAssertTrue(r.mirrored); XCTAssertEqual(r.frames, ["side_right"]); XCTAssertFalse(r.isFallback)
     }
 
     func testMirroringWhenAllowed() {
@@ -235,6 +241,71 @@ final class SimulationTests: XCTestCase {
         sim.force(.hang)
         run(sim, seconds: 6)
         if case .hanging = sim.motion {} else { XCTFail("expected hanging, got \(sim.motion)") }
+    }
+}
+
+final class JumpUpTests: XCTestCase {
+    let screen = ScreenInfo(id: 1, visibleFrame: CGRect(x: 0, y: 80, width: 1600, height: 900))
+    let manifest = SpriteManifest(entries: [
+        .init(pose: .stand, facing: .front, frames: ["front"]),
+        .init(pose: .walk, facing: .right, frames: ["side_right"], bob: true),
+    ])
+
+    func makeSim(windows: [WindowInfo]) -> MascotSimulation {
+        let sim = MascotSimulation(catalog: SpriteCatalog(manifest: manifest), seed: 5)
+        sim.hourProvider = { 14 }
+        sim.updateTerrain(Terrain.build(screens: [screen], windows: windows, headroom: 200))
+        sim.place(at: CGPoint(x: 1300, y: 80))
+        return sim
+    }
+
+    func onWindow(_ sim: MascotSimulation, _ id: UInt32) -> Bool {
+        if case .grounded(let f) = sim.motion, f.owner == .window(id) { return true }
+        return false
+    }
+
+    func testJumpsUpOntoWindow() {
+        // 上端 y=500 の窓（x 200〜800）。鈴は窓の外（x=1300）の床にいる
+        let sim = makeSim(windows: [WindowInfo(id: 10, frame: CGRect(x: 200, y: 200, width: 600, height: 300))])
+        sim.force(.jumpUp, duration: 30)
+        var landed = false
+        for _ in 0..<(30 * 40) {
+            sim.step(1.0 / 30)
+            if onWindow(sim, 10) { landed = true; break }
+        }
+        XCTAssertTrue(landed, "position=\(sim.position) motion=\(sim.motion)")
+        XCTAssertEqual(sim.position.y, 500, accuracy: 1)
+    }
+
+    func testJumpsUpOntoHighWindowWithoutHittingTheCeiling() {
+        // 頭上の余裕ぎりぎりの窓（上端 780 + 200 = 980 = 画面の上端）
+        let sim = makeSim(windows: [WindowInfo(id: 11, frame: CGRect(x: 300, y: 300, width: 500, height: 480))])
+        sim.force(.jumpUp, duration: 30)
+        var landed = false
+        for _ in 0..<(30 * 40) {
+            sim.step(1.0 / 30)
+            if onWindow(sim, 11) { landed = true; break }
+        }
+        XCTAssertTrue(landed, "position=\(sim.position) motion=\(sim.motion)")
+    }
+
+    func testEventuallyHopsOntoWindowOnItsOwn() {
+        let sim = makeSim(windows: [WindowInfo(id: 10, frame: CGRect(x: 200, y: 200, width: 900, height: 300))])
+        var visited = false
+        for _ in 0..<(30 * 600) {
+            sim.step(1.0 / 30)
+            if onWindow(sim, 10) { visited = true; break }
+        }
+        XCTAssertTrue(visited)
+    }
+
+    func testPlannerNeedsAWindowToJumpOnto() {
+        let p = BehaviorPlanner()
+        let spec = p.spec(.jumpUp)!
+        var ctx = BehaviorContext(energy: 0.8, hour: 14, onWindow: false, canJumpUp: true, last: nil) { _ in true }
+        XCTAssertGreaterThan(p.weight(of: spec, in: ctx, now: 0), 0)
+        ctx.canJumpUp = false
+        XCTAssertEqual(p.weight(of: spec, in: ctx, now: 0), 0)
     }
 }
 

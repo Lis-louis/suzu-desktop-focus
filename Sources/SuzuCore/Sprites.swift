@@ -74,7 +74,8 @@ public struct SpriteCatalog: Sendable {
         }
         func lookup(_ p: Pose) -> ResolvedSprite? {
             if let e = entry(p, facing) { return make(e, mirrored: false, fallback: p != pose) }
-            if allowMirroring, facing.opposite != facing, let e = entry(p, facing.opposite) {
+            // 歩くときは、正面のまま横に滑るより自然なので、設定に関係なく反対向きの絵を反転して使う
+            if allowMirroring || p == .walk, facing.opposite != facing, let e = entry(p, facing.opposite) {
                 return make(e, mirrored: true, fallback: p != pose)
             }
             return nil

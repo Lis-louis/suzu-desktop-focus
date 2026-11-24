@@ -22,7 +22,7 @@
 - **Stays out of your way**: clicks on transparent areas pass through to the app behind, and clicking Suzu never steals focus from the app you are using.
 - **Acts on her own**: idling, walking, looking around, turning away, dozing, heading to the screen edge, and more.
   Her choices depend on her energy, the time of day, where she is, and cooldowns, so her behavior isn't purely random.
-- **Interacts with windows**: stands on top of windows, moves along when a window moves, falls when it closes, and jumps down.
+- **Interacts with windows**: hops up onto windows from the floor (0.5.3 and later), stands on top of windows, moves along when a window moves, falls when it closes, and jumps down.
 - **Mouse interaction**: click to get a reaction, drag to move or throw her, double-click to open the chat window. She turns toward your cursor.
 - **Ball play** (Windows 0.5.0 and later, Mac 0.5.3 and later): Suzu chases a ball and kicks it around. She sometimes brings one out on her own, and you can bring one out with "Ball" in the menu or Control Panel. Drag the ball to throw it, or click it to make it bounce.
 - **Smooth motion**: draws in step with your monitor's refresh rate (180 fps on a 180 Hz monitor).
@@ -237,7 +237,7 @@ powershell -File tools\send_event.ps1 '{"type":"speak","text":"Good work today!"
 
 ### Known limitations
 
-- There is no left-facing image yet, so she moves left in her front-facing standing pose (turn on "Mirror the right-facing image for the left" to have her face left while walking).
+- There is no left-facing image yet, so when walking left she uses the mirrored right-facing image (0.5.3 and later; the hair ornament appears on the other side). When standing and facing left, she is mirrored only if "Mirror the right-facing image for the left" is turned on.
 - Even with "Keep above other windows" turned off, she doesn't walk behind windows on purpose; other windows simply cover her.
 - Suzu cannot move other windows (that would need permission to control other apps).
 - Windows: maximized windows and always-on-top windows are not used as footholds. Settings are stored in `%APPDATA%\Suzu\settings.json`.

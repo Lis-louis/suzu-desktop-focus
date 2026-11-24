@@ -70,6 +70,8 @@ public sealed class MascotSimulation
     private double _hoverTime;
     private (Emote Emote, double Seconds)? _transientEmote;
     private double _kickCooldown;
+    /// <summary>跳び乗る先の窓と着地点</summary>
+    private (Floor Floor, double LandX)? _jumpTarget;
     private bool _running;
 
     public MascotSimulation(Config config, SpriteCatalog catalog, ulong? seed = null)
@@ -285,7 +287,7 @@ public sealed class MascotSimulation
 
         switch (Activity)
         {
-            case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen:
+            case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen or Activity.JumpUp:
             {
                 if (_targetX is not { } tx) { FinishActivity(); return; }
                 double dir = tx > Position.X ? 1 : -1;
@@ -427,6 +429,9 @@ public sealed class MascotSimulation
                 Facing = Facing.Front;
                 break;
             }
+            case Activity.JumpUp:
+                JumpUpOntoWindow(f);
+                break;
             default:
                 FinishActivity();
                 break;
@@ -441,17 +446,54 @@ public sealed class MascotSimulation
         if (Terrain.ScreenFloor(n) is not { } nf || nf.Width <= Cfg.BodyWidth * 2) return false;
         double inset = Cfg.BodyWidth / 2 + 40 * S;
         double landX = dir > 0 ? nf.MinX + inset : nf.MaxX - inset;
+        Jump(floor, nf.Y, landX);
+        Facing = dir > 0 ? Facing.Right : Facing.Left;
+        return true;
+    }
+
+    /// <summary>跳び乗れる窓（今の床より上にあり、歩いて真下まで行けるもの）</summary>
+    private List<(Floor Floor, double Lo, double Hi)> JumpUpCandidates(Floor f)
+    {
+        var (lo0, hi0) = ReachableRange(f);
+        double margin = Cfg.BodyWidth / 2;
+        var list = new List<(Floor, double, double)>();
+        foreach (var o in Terrain.Floors)
+        {
+            if (!o.Owner.IsWindow || o.Y <= f.Y + 20 * S || o.Y - f.Y > Cfg.BodyHeight * 6 || o.Width < Cfg.BodyWidth * 1.5) continue;
+            double lo = Math.Max(o.MinX + margin, lo0 + margin), hi = Math.Min(o.MaxX - margin, hi0 - margin);
+            if (lo < hi) list.Add((o, lo, hi));
+        }
+        return list;
+    }
+
+    /// <summary>窓へ跳び乗る（Arrive から）。窓が動いた・消えたときは跳ばずに終わる。</summary>
+    private void JumpUpOntoWindow(Floor f)
+    {
+        if (_jumpTarget is not { } t) { FinishActivity(); return; }
+        _jumpTarget = null;
+        var dest = Terrain.Floors.Where(x => x.Owner == t.Floor.Owner && x.Contains(t.LandX) && x.Y > f.Y + 20 * S)
+                                 .Select(x => (Floor?)x).FirstOrDefault();
+        if (dest is not { } d) { FinishActivity(); return; }
+        Facing = t.LandX >= Position.X ? Facing.Right : Facing.Left;
+        Jump(f, d.Y, t.LandX);
+    }
+
+    /// <summary>床から跳んで、高さ toY の床の landX に降りる</summary>
+    private void Jump(Floor floor, double toY, double landX)
+    {
         double g = Cfg.Gravity * S;
-        double rise = nf.Y - floor.Y;
+        double rise = toY - floor.Y;
         double peak = Math.Max(rise, 0) + 40 * S;   // 床より少し高く跳んでから降りる
-        double vy = Math.Sqrt(2 * g * peak);
+        // 画面の上端より上へは行けない（頭がつかえる）ので、跳ぶ高さを抑える
+        if (Terrain.ScreenInColumn(Position) is { } s)
+            peak = Math.Min(peak, Math.Max(rise + 5 * S, s.VisibleFrame.MaxY - Cfg.BodyHeight - floor.Y));
+        // 1 コマずつ進める計算では頂点が理論より少し低くなる（30fps で約 g/60 ぶん）ので、初速を少し足す
+        double vy = Math.Sqrt(2 * g * peak) + g / 60;
         double flight = vy / g + Math.Sqrt(2 * (peak - rise) / g);
         // 空中では横速度が 0.6^t で減衰するので、その分を見込んで初速を決める
         double decay = 1 - Math.Pow(0.6, flight);
         double vx = (landX - Position.X) * -Math.Log(0.6) / Math.Max(decay, 0.05);
         StartFalling(new PointD(vx, vy));
-        Facing = dir > 0 ? Facing.Right : Facing.Left;
-        return true;
     }
 
     /// <summary>スクリーンの床にいるとき、隣の画面がつながっている側</summary>
@@ -490,7 +532,8 @@ public sealed class MascotSimulation
         if (Cfg.Paused) { SetActivity(Activity.Idle, 3); return; }
         if (Motion is not Motion.Grounded { Floor: var f }) return;
         var ctx = new BehaviorContext(Energy, HourProvider(), f.Owner.IsWindow, _lastActivity,
-            s => Cfg.AllowPlaceholders || Catalog.Has(s.Pose), NeighborSides(f).Count > 0, Cfg.AllowBallPlay);
+            s => Cfg.AllowPlaceholders || Catalog.Has(s.Pose), NeighborSides(f).Count > 0, Cfg.AllowBallPlay,
+            JumpUpCandidates(f).Count > 0);
         var (a, d) = _planner.Choose(ctx, _clock, _rng);
         SetActivity(a, d);
         Prepare(a, f);
@@ -548,6 +591,20 @@ public sealed class MascotSimulation
             case Activity.TurnAway:
                 if (Catalog.Has(Pose.Stand, Facing.Back)) Facing = Facing.Back;
                 break;
+            case Activity.JumpUp:
+            {
+                // 窓を 1 つ選び、その真下（少し手前）まで歩いてから跳ぶ
+                _targetX = null;
+                _jumpTarget = null;
+                var cands = JumpUpCandidates(f);
+                if (cands.Count == 0) break;
+                var c = cands[_rng.NextInt(cands.Count)];
+                double landX = _rng.Range(c.Lo, c.Hi);
+                double side = Position.X < landX ? -1 : 1;
+                _targetX = Math.Clamp(landX + side * Cfg.BodyWidth * 0.6, lo0 + margin, Math.Max(lo0 + margin, hi0 - margin));
+                _jumpTarget = (c.Floor, landX);
+                break;
+            }
             case Activity.PlayBall:
                 _targetX = null;
                 _kickCooldown = 0.6;
@@ -585,7 +642,7 @@ public sealed class MascotSimulation
     {
         Activity = a;
         _timeLeft = duration;
-        if (a is not (Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen)) _targetX = null;
+        if (a is not (Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen or Activity.JumpUp)) _targetX = null;
     }
 
     private void StartFalling(PointD v)
@@ -659,7 +716,7 @@ public sealed class MascotSimulation
             default:
                 switch (Activity)
                 {
-                    case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen:
+                    case Activity.Walk or Activity.GoToEdge or Activity.JumpDown or Activity.Climb or Activity.Hang or Activity.CrossScreen or Activity.JumpUp:
                         pose = _targetX == null ? Pose.Stand : Pose.Walk; break;
                     case Activity.Sit: pose = Pose.Sit; break;
                     case Activity.Sleep: pose = Pose.Sleep; emote = Emote.Sleepy; break;
