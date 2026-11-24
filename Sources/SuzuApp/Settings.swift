@@ -220,7 +220,8 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .onAppear { status.settingsVisible = true }
         .onDisappear { status.settingsVisible = false }
-        .frame(width: 440)
+        // 中身はスクロールする Form なので、高さを決めておかないとウィンドウが潰れて（タイトルバーだけになって）しまう
+        .frame(minWidth: 440, idealWidth: 440, minHeight: 360, idealHeight: 680)
         .padding(.vertical, 8)
     }
 }

@@ -604,10 +604,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate, Ba
     @objc private func openSettings() {
         if settingsWindow == nil {
             let missing = sim.catalog.missingPoses().map { "\($0.0.rawValue)/\($0.1.rawValue)" }
-            let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, status: status, updater: updater, missingAssets: missing)))
+            let host = NSHostingController(rootView: SettingsView(settings: settings, status: status, updater: updater, missingAssets: missing))
+            // SwiftUI 側の大きさに合わせて縮めない（スクロールする Form は高さ 0 と見なされ、ウィンドウが潰れるため）
+            host.sizingOptions = []
+            let w = NSWindow(contentViewController: host)
             w.title = L.pick("鈴の設定", "Suzu Settings")
-            w.styleMask = [.titled, .closable]
+            w.styleMask = [.titled, .closable, .resizable]
             w.isReleasedWhenClosed = false
+            w.contentMinSize = NSSize(width: 440, height: 360)
+            // 画面に収まる高さで開く（縦に伸ばせば全部見える）
+            let screenHeight = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.height ?? 800
+            w.setContentSize(NSSize(width: 460, height: min(720, screenHeight - 80)))
             settingsWindow = w
         }
         NSApp.activate()
