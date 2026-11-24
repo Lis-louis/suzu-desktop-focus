@@ -81,10 +81,13 @@ internal sealed class BallWindow : LayeredWindow
             g.FillRectangle(band, -w / 2, -size, w, size * 2);           // 縦の帯
         }
         using (var dot = new SolidBrush(Theme.SuzuBubble))
+        using (var mark = new SolidBrush(Theme.Navy))
         {
+            // 1 つだけ濃い色の点にして、回る向きがはっきりわかるようにする（全部同じだと速いときに逆回りに見える）
             float d = size * 0.18f, o = size * 0.28f;
-            foreach (var (x, y) in new[] { (o, o), (-o, o), (o, -o), (-o, -o) })
+            foreach (var (x, y) in new[] { (o, o), (-o, o), (-o, -o) })
                 g.FillEllipse(dot, x - d / 2, y - d / 2, d, d);
+            g.FillEllipse(mark, o - d * 0.6f, -o - d * 0.6f, d * 1.2f, d * 1.2f);
         }
         g.Restore(state);
         // 立体感：右下に影、左上につや
