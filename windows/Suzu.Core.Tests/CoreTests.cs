@@ -397,3 +397,82 @@ public class BridgeTests
         Assert.Contains("\"message\"", SecretaryJson.Encode(new MascotEvent(MascotEventKind.UserMessage, "hi")));
     }
 }
+
+public class ReleaseTests
+{
+    [Theory]
+    [InlineData("0.1.0", 0, 1, 0)]
+    [InlineData("v0.2.0", 0, 2, 0)]
+    [InlineData("V1.2", 1, 2, 0)]
+    [InlineData("1.2.3-beta.1", 1, 2, 3)]
+    [InlineData("1.2.3+abc123", 1, 2, 3)]
+    [InlineData("1.2.3.0", 1, 2, 3)]
+    [InlineData(" 2.10.4\n", 2, 10, 4)]
+    public void ParsesVersions(string text, int major, int minor, int patch)
+    {
+        Assert.Equal(new AppVersion(major, minor, patch), AppVersion.Parse(text));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("latest")]
+    [InlineData("1.x.0")]
+    [InlineData("-1.0.0")]
+    public void RejectsInvalidVersions(string? text) => Assert.Null(AppVersion.Parse(text));
+
+    [Fact]
+    public void ComparesNumericallyNotAlphabetically()
+    {
+        Assert.True(AppVersion.Parse("0.10.0") > AppVersion.Parse("0.9.9"));
+        Assert.True(AppVersion.Parse("1.0.0") > AppVersion.Parse("0.99.99"));
+        Assert.True(AppVersion.Parse("0.2.1") > AppVersion.Parse("0.2.0"));
+        Assert.False(AppVersion.Parse("v0.2.0") > AppVersion.Parse("0.2.0"));
+    }
+
+    private const string LatestJson = """
+    {
+      "tag_name": "v0.2.0", "html_url": "https://github.com/Lis-louis/suzu-desktop-focus/releases/tag/v0.2.0",
+      "draft": false, "prerelease": false,
+      "assets": [
+        { "name": "Suzu-0.2.0.pkg", "state": "uploaded", "size": 3000000,
+          "browser_download_url": "https://example.invalid/Suzu-0.2.0.pkg", "digest": "sha256:AAAA" },
+        { "name": "SuzuSetup-0.2.0-x64.exe", "state": "uploaded", "size": 62000000,
+          "browser_download_url": "https://example.invalid/SuzuSetup-0.2.0-x64.exe", "digest": "sha256:ABCDEF0123" }
+      ]
+    }
+    """;
+
+    [Fact]
+    public void FindsWindowsInstallerInLatestRelease()
+    {
+        var r = ReleaseInfo.FromGitHubJson(LatestJson, n => n.StartsWith("SuzuSetup-") && n.EndsWith("-x64.exe"));
+        Assert.NotNull(r);
+        Assert.Equal(new AppVersion(0, 2, 0), r!.Version);
+        Assert.Equal("SuzuSetup-0.2.0-x64.exe", r.AssetName);
+        Assert.Equal(62000000, r.Size);
+        Assert.Equal("abcdef0123", r.Sha256);
+    }
+
+    [Fact]
+    public void ReturnsNullWithoutMatchingAsset()
+    {
+        Assert.Null(ReleaseInfo.FromGitHubJson(LatestJson, n => n.EndsWith(".zip")));
+    }
+
+    [Fact]
+    public void IgnoresDraftsAndPrereleases()
+    {
+        Assert.Null(ReleaseInfo.FromGitHubJson(LatestJson.Replace("\"draft\": false", "\"draft\": true"), _ => true));
+        Assert.Null(ReleaseInfo.FromGitHubJson(LatestJson.Replace("\"prerelease\": false", "\"prerelease\": true"), _ => true));
+    }
+
+    [Fact]
+    public void ToleratesMissingDigest()
+    {
+        var json = LatestJson.Replace(", \"digest\": \"sha256:ABCDEF0123\"", "");
+        var r = ReleaseInfo.FromGitHubJson(json, n => n.EndsWith(".exe"));
+        Assert.NotNull(r);
+        Assert.Null(r!.Sha256);
+    }
+}

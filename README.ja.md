@@ -43,6 +43,15 @@
 > macOS：.pkg が開けないときは **システム設定 → プライバシーとセキュリティ** で「このまま開く」をクリック。
 > Windows：SmartScreen が出たときは **詳細情報 → 実行** をクリック。
 
+### 自動アップデート（Windows 版 0.2.0 以降）
+
+Windows 版は、起動してから 10 秒後と、その後 3 時間ごとに新しいバージョンがないか確認し、裏でダウンロードします（設定 → **アプリ** の「アップデートを確認」で今すぐ確認することもできます）。
+
+準備ができると通知が出て、コントロールパネルと通知領域のメニューに **再起動して更新** が出ます。押すと画面なしで入れ替わって鈴が起動し直します。押さずにアプリを終了しても、終了するときに入れ替わります。設定はそのまま引き継がれます。
+
+0.1.0 には自動アップデートがないため、0.1.0 を使っている場合は一度だけ手動で新しいインストーラーを入れ直してください。
+macOS 版の自動アップデートは準備中です。それまでは [Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases) から新しい `.pkg` を入れ直してください。
+
 ## 動作環境
 
 - macOS 14 Sonoma 以降（Apple Silicon・Intel）
@@ -86,8 +95,14 @@ dotnet run --project windows\Suzu          # 起動
 
 Windows の `.exe` は Mac では作れません。GitHub に push すると [Installers](.github/workflows/installers.yml) ワークフローが
 GitHub の macOS・Windows マシンで両方のインストーラーを作り、Artifacts に置きます。
-`v0.1.0` のようなタグを push すると、下書きのリリースにも添付されます。
 バージョン番号は `VERSION` ファイルで管理しています。
+
+### 新しいバージョンの配布
+
+`VERSION` を上げて（例：`0.2.0` → `0.3.0`）main に push すると、ワークフローがテスト → 両方のインストーラーの作成 →
+[Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases) にタグ `v<バージョン>` で公開まで行います。
+インストール済みの鈴（Windows 版）は Releases の最新版を見て自動でアップデートします。
+`VERSION` を上げていない push では Release は作りません。途中で失敗したときは Actions →「Installers」→ **Run workflow** で、足りないファイルを上げ直して公開します。
 
 macOS のパッケージを署名・公証する場合は `APP_SIGN_IDENTITY`・`PKG_SIGN_IDENTITY`・`NOTARY_PROFILE` を設定してください（`scripts/build_pkg.sh` の先頭のコメント参照）。
 

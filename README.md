@@ -44,6 +44,16 @@ To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On
 > macOS: if the .pkg is blocked, go to **System Settings → Privacy & Security** and click **Open Anyway**.
 > Windows: if SmartScreen appears, click **More info → Run anyway**.
 
+### Automatic updates (Windows, 0.2.0 and later)
+
+On Windows, Suzu checks for a new version 10 seconds after it starts and every 3 hours after that, and downloads it in the background
+(you can also check right away with **Check for updates** under Settings → **App**).
+
+When the update is ready, a notification appears and **Restart to update** shows up in the Control Panel and the tray menu. Click it to install silently and restart Suzu. If you quit the app instead, the update is installed as it quits. Your settings are kept.
+
+Version 0.1.0 has no automatic updates, so if you are on 0.1.0, install the new version manually once.
+Automatic updates for macOS are in progress. Until then, install the new `.pkg` from [Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases).
+
 ## Requirements
 
 - macOS 14 Sonoma or later (Apple Silicon or Intel)
@@ -87,8 +97,14 @@ dotnet run --project windows\Suzu          # launch
 
 The Windows `.exe` can't be built on a Mac. Pushing to GitHub runs the [Installers](.github/workflows/installers.yml) workflow,
 which builds both installers on GitHub's macOS and Windows machines and uploads them as Artifacts.
-Pushing a tag such as `v0.1.0` also attaches them to a draft release.
 The version number comes from the `VERSION` file.
+
+### Releasing a new version
+
+Bump `VERSION` (for example `0.2.0` → `0.3.0`) and push to main. The workflow tests, builds both installers, and publishes them to
+[Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases) under the tag `v<version>`.
+Installed copies of Suzu for Windows watch the latest release and update themselves.
+Pushes that don't bump `VERSION` don't create a release. If a run fails partway, use Actions → "Installers" → **Run workflow** to upload the missing files and publish.
 
 To sign and notarize the macOS package, set `APP_SIGN_IDENTITY`, `PKG_SIGN_IDENTITY`, and `NOTARY_PROFILE` (see the comments in `scripts/build_pkg.sh`).
 

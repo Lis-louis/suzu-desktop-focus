@@ -1,19 +1,53 @@
-# Windows 用セットアップウィザード（.exe）と macOS 用インストーラー（.pkg）を作る。
+# Windows 用セットアップウィザード（.exe）と macOS 用インストーラー（.pkg）を作り、新しい版を配る。
 # - 手動実行（Actions タブの「Run workflow」）・main への push・プルリクエストでビルドし、成果物（Artifacts）に置く
-# - v から始まるタグ（例: v0.1.0）を push すると、GitHub の Releases にも添付する
+# - リポジトリ直下の VERSION を上げて main に push すると、その版の Release（タグ v<version>）を作って公開する。
+#   インストール済みのアプリ（0.2.0 以降）は Releases の最新版を見て、新しい版を自動でダウンロードする。
+#   VERSION を上げていない push では Release は作らない（その版の Release が公開済みならスキップ）。
+#   途中で失敗したときは、もう一度動かす（Actions →「Installers」→ Run workflow）と足りないファイルを上げ直して公開する。
 name: Installers
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      release: ${{ steps.ver.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is this version already released?
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(tr -d '[:space:]' < VERSION)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          release=false
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            # 公開済み（下書きでない）Release があれば何もしない
+            if gh release view "v$v" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null | grep -qx false; then
+              echo "v$v はもう公開済みです（配るには VERSION を上げてください）"
+            else
+              echo "v$v をリリースします"
+              release=true
+            fi
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
   windows:
     name: Windows (.exe installer)
     runs-on: windows-latest
@@ -64,19 +98,34 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Attach to GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, macos]
+    name: Publish GitHub Release
+    needs: [version, windows, macos]
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    concurrency:
+      group: release
+      cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          draft: true
+      - name: Upload and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$V"
+          files=("dist/SuzuSetup-$V-x64.exe" "dist/Suzu-$V.pkg" "dist/Suzu-$V-win-x64-portable.zip")
+          ls -la "${files[@]}"
+          # 下書きのうちにファイルを揃えてから公開する（公開した瞬間にアプリが更新を始めるため）
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "鈴 Suzu $V" --generate-notes
+          fi
+          gh release upload "$tag" "${files[@]}" --clobber
+          gh release edit "$tag" --draft=false --latest

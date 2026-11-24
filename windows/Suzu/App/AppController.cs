@@ -21,6 +21,7 @@ internal sealed class AppController : ApplicationContext
     private readonly MascotStatus _status = new();
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu = new();
+    private readonly Updater _updater;
 
     private readonly FrameClock _frameClock;
     private int _framesSinceMeasure;
@@ -83,7 +84,15 @@ internal sealed class AppController : ApplicationContext
             Visible = true,
         };
         _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) OpenControlPanel(); };
+        _tray.BalloonTipClicked += (_, _) => OpenControlPanel();
         _menu.Opening += (_, e) => { BuildMenu(); e.Cancel = false; };
+
+        _updater = new Updater();
+        _updater.BecameReady += () => _tray.ShowBalloonTip(8000, L.Pick("鈴", "Suzu"),
+            L.Pick($"新しいバージョン {_updater.Release?.Version} の準備ができました。コントロールパネルの「再起動して更新」で入れ替わります（アプリを終了したときにも入れ替わります）。",
+                   $"Version {_updater.Release?.Version} is ready. Choose \"Restart to update\" in the Control Panel (it is also installed when you quit)."),
+            ToolTipIcon.Info);
+        _updater.Start();
 
         _frameClock = new FrameClock(Tick);
         UpdateRefreshRate();
@@ -390,6 +399,18 @@ internal sealed class AppController : ApplicationContext
     {
         _menu.Items.Clear();
         _menu.Font = Theme.UiFont(9.5f);
+        if (_updater.State == UpdateState.Ready)
+        {
+            _menu.Items.Add(new ToolStripMenuItem(L.Pick($"再起動して更新（{_updater.Release?.Version}）", $"Restart to Update ({_updater.Release?.Version})"), null,
+                                                  (_, _) => InstallUpdate()) { Font = Theme.UiFont(9.5f, FontStyle.Bold) });
+            _menu.Items.Add(new ToolStripSeparator());
+        }
+        else if (_updater.State == UpdateState.Available)
+        {
+            _menu.Items.Add(L.Pick($"新しいバージョン {_updater.Release?.Version} をダウンロード…", $"Download Version {_updater.Release?.Version}…"), null,
+                            (_, _) => _updater.OpenReleasePage());
+            _menu.Items.Add(new ToolStripSeparator());
+        }
         _menu.Items.Add(_status.Running ? L.Pick("鈴を止める", "Stop Suzu") : L.Pick("鈴を起動する", "Start Suzu"), null, (_, _) => ToggleRunning());
         _menu.Items.Add(L.Pick("コントロールパネル…", "Control Panel…"), null, (_, _) => OpenControlPanel());
         _menu.Items.Add(new ToolStripSeparator());
@@ -457,14 +478,15 @@ internal sealed class AppController : ApplicationContext
 
     private void OpenControlPanel()
     {
-        _controlPanel ??= new ControlPanelForm(_settings, _status, ToggleRunning, Summon, OpenConversation, OpenSettings, Quit);
+        _controlPanel ??= new ControlPanelForm(_settings, _status, _updater, ToggleRunning, Summon, OpenConversation, OpenSettings, Quit, InstallUpdate);
         UpdateStatusText(force: true);
         BringUp(_controlPanel);
     }
 
     private void OpenSettings()
     {
-        _settingsForm ??= new SettingsForm(_settings, _status, _sim.Catalog.MissingPoses().Select(m => $"{m.Pose.RawName()}/{m.Facing.RawName()}").ToList());
+        _settingsForm ??= new SettingsForm(_settings, _status, _updater,
+                                           _sim.Catalog.MissingPoses().Select(m => $"{m.Pose.RawName()}/{m.Facing.RawName()}").ToList(), InstallUpdate);
         BringUp(_settingsForm);
     }
 
@@ -504,9 +526,17 @@ internal sealed class AppController : ApplicationContext
         f.BringToFront();
     }
 
+    /// <summary>「再起動して更新」：画面なしで新しい版に入れ替え、終わったら鈴を起動し直す</summary>
+    private void InstallUpdate()
+    {
+        if (_updater.Install(relaunch: true)) Quit();
+    }
+
     private void Quit()
     {
         _settings.SavedPosition = _sim.Position;
+        // ダウンロード済みの新しい版があれば、終了するときに入れ替える（次に起動したときには新しい版になる）
+        if (_updater.State == UpdateState.Ready) _updater.Install(relaunch: false);
         ExitThread();
     }
 
@@ -515,6 +545,7 @@ internal sealed class AppController : ApplicationContext
         StopTimers();
         _frameClock.Dispose();
         _bridge.Stop();
+        _updater.Dispose();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
