@@ -5,6 +5,8 @@ public enum Activity
 {
     // 自律行動
     Idle, Walk, LookAround, TurnAway, Doze, Sit, Sleep, Stretch, Joy, GoToEdge, JumpDown, Climb, Hang, CrossScreen,
+    // ボールを追いかけて蹴る（ボールがなければ自分で出してくる）
+    PlayBall,
     // 外部要因（自律選択されない）
     React, Dragged, Falling,
 }
@@ -39,13 +41,16 @@ public readonly record struct BehaviorSpec(
         new(Activity.Hang,       Pose.Hang,    4,  6, 15,      90,  Placement.WindowTop),
         // 隣のディスプレイへお出かけ（画面が 2 枚以上つながっているときだけ）
         new(Activity.CrossScreen, Pose.Walk,   6,  90, 90,     90,  Placement.ScreenFloor),
+        // ボール遊び（設定でオフにできる）
+        new(Activity.PlayBall,   Pose.Walk,    7,  25, 50,     150, Placement.Anywhere),
     ];
 }
 
 /// <summary>行動選択に使う状況</summary>
 /// <param name="CanCrossScreen">今いる画面の左右どちらかに、歩いて行ける隣の画面がある</param>
+/// <param name="CanPlayBall">ボール遊びをしてよい（設定でオン）</param>
 public sealed record BehaviorContext(double Energy, int Hour, bool OnWindow, Activity? Last, Func<BehaviorSpec, bool> Available,
-                                     bool CanCrossScreen = false);
+                                     bool CanCrossScreen = false, bool CanPlayBall = false);
 
 /// <summary>重み付き抽選＋状況補正＋クールダウンで、完全なランダムにならない行動選択を行う。</summary>
 public sealed class BehaviorPlanner
@@ -64,6 +69,7 @@ public sealed class BehaviorPlanner
         if (s.Placement == Placement.ScreenFloor && ctx.OnWindow) return 0;
         if (s.Placement == Placement.WindowTop && !ctx.OnWindow) return 0;
         if (s.Activity == Activity.CrossScreen && !ctx.CanCrossScreen) return 0;
+        if (s.Activity == Activity.PlayBall && !ctx.CanPlayBall) return 0;
 
         double tired = 1 - ctx.Energy;
         bool night = ctx.Hour < 6 || ctx.Hour >= 23;
@@ -82,6 +88,8 @@ public sealed class BehaviorPlanner
                 if (ctx.Last is Activity.Sleep or Activity.Sit or Activity.Doze) w *= 5;
                 break;
             case Activity.Joy: w *= 0.5 + ctx.Energy; break;
+            // 元気なときほど遊ぶ。夜はあまり遊ばない
+            case Activity.PlayBall: w *= ctx.Energy * ctx.Energy * 2 * (night ? 0.3 : 1); break;
         }
         // 同じ行動の連続や歩きっぱなしを避ける
         if (ctx.Last == s.Activity) w *= s.Activity == Activity.Idle ? 0.6 : 0.3;

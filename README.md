@@ -24,6 +24,7 @@
   Her choices depend on her energy, the time of day, where she is, and cooldowns, so her behavior isn't purely random.
 - **Interacts with windows**: stands on top of windows, moves along when a window moves, falls when it closes, and jumps down.
 - **Mouse interaction**: click to get a reaction, drag to move or throw her, double-click to open the chat window. She turns toward your cursor.
+- **Ball play** (Windows 0.5.0 and later): Suzu chases a ball and kicks it around. She sometimes brings one out on her own, and you can bring one out with "Ball" in the menu or Control Panel. Drag the ball to throw it, or click it to make it bounce.
 - **Smooth motion**: draws in step with your monitor's refresh rate (180 fps on a 180 Hz monitor).
 - **Make her your own**: size (40–200%), opacity, keep-on-top, movement speed, and frame rate.
 - **Multiple displays** (she walks over to the next screen), saved and restored position, and launch at login.
@@ -71,7 +72,9 @@ If you are on a version without automatic updates (Windows 0.1.0, macOS 0.2.0 or
 | Click Suzu | She reacts (and wakes up if she was sleeping) |
 | Drag Suzu | Move her anywhere. Release with momentum to throw her |
 | Double-click Suzu | Open the chat window |
-| Right-click Suzu | Menu (stop, call, pause, size, keep on top, chat, settings) |
+| Right-click Suzu | Menu (stop, call, play with a ball, pause, size, keep on top, chat, settings) |
+| Drag the ball (Windows) | Throw it. Suzu runs after it and starts playing |
+| Click the ball (Windows) | The ball bounces |
 | Scroll over Suzu while holding ⌘ (macOS) / Ctrl (Windows) | Resize her |
 | Click the Dock icon (macOS) / the tray icon (Windows) | Open the control panel |
 | Click the bell in the menu bar (macOS) / right-click the tray icon (Windows) | Same menu as right-clicking Suzu |
@@ -99,6 +102,7 @@ On Windows, Suzu's icon sits in the notification area (system tray) at the right
 | Keep above other windows | When off, other windows can cover her | On |
 | Frame rate | "Match monitor" or a cap from 30 to 240 fps. "Currently" shows the real fps | Match monitor |
 | Climb onto and jump off windows | Whether she uses windows as footholds | On |
+| Play with a ball (Windows) | Whether she plays with the ball (and sometimes brings one out on her own) | On |
 | Pause autonomous behavior | Keeps her still | Off |
 | Movement speed | ×0.5–×2.0 | ×1.0 |
 | Temporary options until the assets are ready | See below | Off |
@@ -233,7 +237,8 @@ powershell -File tools\send_event.ps1 '{"type":"speak","text":"Good work today!"
 
 ### Known limitations
 
-- There is no left-facing image yet, so she moves left in her front-facing standing pose.
+- There is no left-facing image yet, so she moves left in her front-facing standing pose (turn on "Mirror the right-facing image for the left" to have her face left while walking).
+- Ball play is Windows-only for now.
 - Even with "Keep above other windows" turned off, she doesn't walk behind windows on purpose; other windows simply cover her.
 - Suzu cannot move other windows (that would need permission to control other apps).
 - Windows: maximized windows and always-on-top windows are not used as footholds. Settings are stored in `%APPDATA%\Suzu\settings.json`.

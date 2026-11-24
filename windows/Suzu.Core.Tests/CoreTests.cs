@@ -476,3 +476,142 @@ public class ReleaseTests
         Assert.Null(r!.Sha256);
     }
 }
+
+public class BallTests
+{
+    private static readonly ScreenInfo Screen = new(1, new RectD(0, 80, 1600, 900));
+    private static readonly Terrain Floor = Terrain.Build([Screen], [], 200);
+    private static readonly SpriteManifest Manifest = new([
+        new(Pose.Stand, Facing.Front, ["front"]),
+        new(Pose.Walk, Facing.Right, ["side_right"], bob: true),
+    ]);
+
+    private static void Run(Ball b, double seconds, Terrain? t = null)
+    {
+        for (int i = 0; i < (int)(seconds * 60); i++) b.Step(1.0 / 60, t ?? Floor, 2200);
+    }
+
+    [Fact]
+    public void BouncesThenRestsOnFloor()
+    {
+        var b = new Ball(new PointD(500, 700), 18);
+        bool bounced = false;
+        for (int i = 0; i < 60 * 4; i++)
+        {
+            b.Step(1.0 / 60, Floor, 2200);
+            if (b.Velocity.Y > 0) bounced = true;
+        }
+        Assert.True(bounced);
+        Assert.True(b.OnFloor);
+        Assert.Equal(80 + 18, b.Position.Y, 1);
+    }
+
+    [Fact]
+    public void RollsToAStop()
+    {
+        var b = new Ball(new PointD(500, 98), 18);
+        Run(b, 0.5);
+        b.Kick(new PointD(300, 0));
+        Run(b, 8);
+        Assert.True(b.IsResting());
+        Assert.True(b.Position.X > 520);
+    }
+
+    [Fact]
+    public void BouncesOffScreenEdges()
+    {
+        var b = new Ball(new PointD(1500, 300), 18);
+        b.Kick(new PointD(2000, 0));
+        Run(b, 3);
+        Assert.InRange(b.Position.X, 18, 1600 - 18);
+    }
+
+    [Fact]
+    public void LandsOnWindowTop()
+    {
+        var t = Terrain.Build([Screen], [new WindowInfo(7, new RectD(300, 200, 600, 400))], 200);
+        var b = new Ball(new PointD(500, 900), 18);
+        Run(b, 4, t);
+        Assert.Equal(600 + 18, b.Position.Y, 1);
+    }
+
+    [Fact]
+    public void HeldBallDoesNotFallAndCanBeThrown()
+    {
+        var b = new Ball(new PointD(500, 700), 18);
+        b.Hold(new PointD(600, 800));
+        Run(b, 1);
+        Assert.Equal(new PointD(600, 800), b.Position);
+        b.Release(new PointD(-500, 300));
+        b.Step(1.0 / 60, Floor, 2200);
+        Assert.False(b.Held);
+        Assert.True(b.Position.X < 600);
+    }
+
+    private static MascotSimulation MakeSim(bool allowBall = true)
+    {
+        var c = new MascotSimulation.Config { AllowBallPlay = allowBall };
+        var sim = new MascotSimulation(c, new SpriteCatalog(Manifest), seed: 7) { HourProvider = () => 14 };
+        sim.UpdateTerrain(Floor);
+        sim.Place(new PointD(800, 80));
+        return sim;
+    }
+
+    [Fact]
+    public void ChasesAndKicksTheBall()
+    {
+        var sim = MakeSim();
+        sim.Ball = new Ball(new PointD(1000, 98), 18);
+        sim.Force(Activity.PlayBall, 30);
+        for (int i = 0; i < 30 * 20 && sim.Kicks == 0; i++) sim.Step(1.0 / 30);
+        Assert.True(sim.Kicks > 0);
+        Assert.InRange(sim.Position.X, 950, 1050);
+    }
+
+    [Fact]
+    public void KeepsPlayingAndThenStops()
+    {
+        var sim = MakeSim();
+        sim.Ball = new Ball(new PointD(900, 98), 18);
+        sim.Force(Activity.PlayBall, 25);
+        for (int i = 0; i < 30 * 25; i++) sim.Step(1.0 / 30);
+        Assert.True(sim.Kicks >= 3, $"kicks={sim.Kicks}");
+        for (int i = 0; i < 30 * 30; i++) sim.Step(1.0 / 30);
+        Assert.NotEqual(Activity.PlayBall, sim.Activity);
+    }
+
+    [Fact]
+    public void AsksForBallWhenPlayingWithoutOne()
+    {
+        var sim = MakeSim();
+        sim.Force(Activity.PlayBall, 30);
+        Assert.True(sim.WantsBall);
+        sim.Ball = new Ball(new PointD(900, 300), 18);
+        Assert.False(sim.WantsBall);
+    }
+
+    [Fact]
+    public void NoticesThrownBallUnlessDisabled()
+    {
+        var sim = MakeSim();
+        sim.Ball = new Ball(new PointD(900, 300), 18);
+        sim.NoticeBall();
+        Assert.Equal(Activity.PlayBall, sim.Activity);
+
+        var off = MakeSim(allowBall: false);
+        off.Ball = new Ball(new PointD(900, 300), 18);
+        off.NoticeBall();
+        Assert.NotEqual(Activity.PlayBall, off.Activity);
+    }
+
+    [Fact]
+    public void PlannerSkipsBallPlayWhenDisabled()
+    {
+        var p = new BehaviorPlanner();
+        var spec = p.Spec(Activity.PlayBall)!.Value;
+        var on = new BehaviorContext(0.9, 14, false, null, _ => true, CanPlayBall: true);
+        var off = on with { CanPlayBall = false };
+        Assert.True(p.Weight(spec, on, 0) > 0);
+        Assert.Equal(0, p.Weight(spec, off, 0));
+    }
+}

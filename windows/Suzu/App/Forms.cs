@@ -14,6 +14,8 @@ internal sealed class MascotStatus
     public int MaxRefreshRate { get; set; } = 60;
     /// <summary>実際に描画できている回数（1 秒あたり）</summary>
     public int MeasuredFps { get; set; }
+    /// <summary>ボールが出ている</summary>
+    public bool BallOut { get; set; }
     public event Action? Changed;
     public void NotifyChanged() => Changed?.Invoke();
 }
@@ -125,6 +127,7 @@ internal sealed class ControlPanelForm : SuzuForm
     private readonly Button _summon = new() { AutoSize = true };
     private readonly Button _chat = new() { AutoSize = true };
     private readonly Button _settingsButton = new() { AutoSize = true };
+    private readonly Button _ball = new() { AutoSize = true };
     private readonly CheckBox _pause = MakeCheck();
     private readonly CheckBox _login = MakeCheck();
     private readonly CheckBox _showOnLaunch = MakeCheck();
@@ -136,7 +139,7 @@ internal sealed class ControlPanelForm : SuzuForm
 
     public ControlPanelForm(AppSettings settings, MascotStatus status, Updater updater,
                             Action onToggleRunning, Action onSummon, Action onConversation, Action onSettings, Action onQuit,
-                            Action onInstallUpdate)
+                            Action onInstallUpdate, Action onToggleBall)
     {
         _settings = settings;
         _status = status;
@@ -161,7 +164,7 @@ internal sealed class ControlPanelForm : SuzuForm
         _toggle.FlatAppearance.BorderSize = 0;
         _toggle.Font = Theme.UiFont(11f, FontStyle.Bold);
         var buttons = new FlowLayoutPanel { AutoSize = true, Anchor = AnchorStyles.None, WrapContents = false, Margin = new Padding(0, 0, 0, 4) };
-        buttons.Controls.AddRange(new Control[] {_summon, _chat, _settingsButton});
+        buttons.Controls.AddRange(new Control[] {_summon, _ball, _chat, _settingsButton});
 
         var footer = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Dock = DockStyle.Fill, Margin = Padding.Empty };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -176,6 +179,7 @@ internal sealed class ControlPanelForm : SuzuForm
 
         _toggle.Click += (_, _) => onToggleRunning();
         _summon.Click += (_, _) => onSummon();
+        _ball.Click += (_, _) => onToggleBall();
         _chat.Click += (_, _) => onConversation();
         _settingsButton.Click += (_, _) => onSettings();
         _quit.Click += (_, _) => onQuit();
@@ -219,6 +223,8 @@ internal sealed class ControlPanelForm : SuzuForm
         _toggle.BackColor = _status.Running ? Color.FromArgb(142, 142, 147) : Theme.Accent;
         _summon.Text = L.Pick("呼ぶ", "Call");
         _summon.Enabled = _status.Running;
+        _ball.Text = _status.BallOut ? L.Pick("ボールをしまう", "Put Ball Away") : L.Pick("ボール", "Ball");
+        _ball.Enabled = _status.Running;
         _chat.Text = L.Pick("話す", "Chat");
         _settingsButton.Text = L.Pick("設定", "Settings");
         _pause.Text = L.Pick("自律行動を一時停止（その場でじっとする）", "Pause autonomous behavior (stay still)");
@@ -316,6 +322,7 @@ internal sealed class SettingsForm : SuzuForm
     private readonly Label _behaviorHeader = MakeLabel(9.5f, FontStyle.Bold, Theme.Navy);
     private readonly CheckBox _interact = MakeCheck();
     private readonly CheckBox _pause = MakeCheck();
+    private readonly CheckBox _ballPlay = MakeCheck();
     private readonly Label _tempHeader = MakeLabel(9.5f, FontStyle.Bold, Theme.Navy);
     private readonly CheckBox _mirror = MakeCheck();
     private readonly CheckBox _placeholders = MakeCheck();
@@ -361,7 +368,7 @@ internal sealed class SettingsForm : SuzuForm
         col.Controls.AddRange(new Control[] {
             _langHeader, _language, Divider(),
             _appearanceHeader, sizeRow, opacityRow, _onTop, fpsRow, _sizeNote, Divider(),
-            _behaviorHeader, _interact, _pause, speedRow, Divider(),
+            _behaviorHeader, _interact, _ballPlay, _pause, speedRow, Divider(),
             _tempHeader, _mirror, _placeholders, _tempNote, Divider(),
             _startupHeader, _login, Divider(),
             _appHeader, _version, _autoUpdate, _updateState, _updateButton, Divider(),
@@ -381,6 +388,7 @@ internal sealed class SettingsForm : SuzuForm
         };
         _status.Changed += OnStatusChanged;
         _interact.CheckedChanged += (_, _) => { if (!_updating) _settings.InteractWithWindows = _interact.Checked; };
+        _ballPlay.CheckedChanged += (_, _) => { if (!_updating) _settings.AllowBallPlay = _ballPlay.Checked; };
         _pause.CheckedChanged += (_, _) => { if (!_updating) _settings.Paused = _pause.Checked; };
         _mirror.CheckedChanged += (_, _) => { if (!_updating) _settings.AllowMirroring = _mirror.Checked; };
         _placeholders.CheckedChanged += (_, _) => { if (!_updating) _settings.AllowPlaceholders = _placeholders.Checked; };
@@ -500,6 +508,8 @@ internal sealed class SettingsForm : SuzuForm
         _behaviorHeader.Text = L.Pick("行動", "Behavior");
         _interact.Text = L.Pick("ウィンドウの上に乗る・飛び降りる", "Climb onto and jump off windows");
         _interact.Checked = _settings.InteractWithWindows;
+        _ballPlay.Text = L.Pick("ボール遊びをする（ときどき自分でボールを出して遊びます）", "Play with a ball (sometimes brings one out on her own)");
+        _ballPlay.Checked = _settings.AllowBallPlay;
         _pause.Text = L.Pick("自律行動を一時停止", "Pause autonomous behavior");
         _pause.Checked = _settings.Paused;
         _tempHeader.Text = L.Pick("素材が揃うまでの暫定設定", "Temporary options until the assets are ready");

@@ -5,12 +5,14 @@ import AppKit
 import CoreImage
 import Vision
 
-struct Crop { let name: String; let source: Int; let rect: CGRect } // rect: 元画像ピクセル, 左上原点
+// rect: 元画像ピクセル, 左上原点。flipX: 左右反転して保存する（向きを名前に合わせる）
+struct Crop { let name: String; let source: Int; let rect: CGRect; var flipX = false }
 
 let crops: [Crop] = [
     // 衣装デザイン図 (source 0)
     Crop(name: "front_costume", source: 0, rect: CGRect(x: 200,  y: 150, width: 1100, height: 2420)),
-    Crop(name: "side_right",    source: 0, rect: CGRect(x: 1230, y: 150, width: 640,  height: 2420)),
+    // デザイン図の「Right」（右半身が見える＝画面の左を向いた絵）を反転して、右向きに歩く画像にする
+    Crop(name: "side_right",    source: 0, rect: CGRect(x: 1230, y: 150, width: 640,  height: 2420), flipX: true),
     Crop(name: "back_costume",  source: 0, rect: CGRect(x: 1860, y: 150, width: 800,  height: 2420)),
     Crop(name: "side_left",     source: 0, rect: CGRect(x: 2640, y: 150, width: 560,  height: 2420)),
     // 設定資料 (source 1)
@@ -49,6 +51,10 @@ for c in crops {
     var ci = CIImage(cvPixelBuffer: masked)
     let scale = targetHeight / ci.extent.height
     ci = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+    if c.flipX {
+        ci = ci.transformed(by: CGAffineTransform(scaleX: -1, y: 1))
+        ci = ci.transformed(by: CGAffineTransform(translationX: -ci.extent.minX, y: -ci.extent.minY))
+    }
     let cs = CGColorSpace(name: CGColorSpace.sRGB)!
     let url = outDir.appendingPathComponent("\(c.name).png")
     try ctx.writePNGRepresentation(of: ci, to: url, format: .RGBA8, colorSpace: cs)

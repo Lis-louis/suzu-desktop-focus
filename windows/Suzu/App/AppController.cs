@@ -16,6 +16,10 @@ internal sealed class AppController : ApplicationContext
     private readonly SpriteStore _sprites;
     private readonly MascotSimulation _sim;
     private readonly MascotWindow _window = new();
+    private readonly BallWindow _ballWindow = new();
+    /// <summary>鈴が自分で出したボール（遊び終わったら自分で片付ける）</summary>
+    private bool _ballBySuzu;
+    private double _ballIdle;
     private readonly SpeechBubble _bubble = new();
     private readonly NamedPipeBridge _bridge = new();
     private readonly MascotStatus _status = new();
@@ -61,6 +65,7 @@ internal sealed class AppController : ApplicationContext
         {
             Paused = _settings.Paused,
             AllowPlaceholders = _settings.AllowPlaceholders,
+            AllowBallPlay = _settings.AllowBallPlay,
         };
         _sim = new MascotSimulation(config, new SpriteCatalog(_sprites.Manifest, _settings.AllowMirroring));
         ApplyBodySize();
@@ -79,6 +84,18 @@ internal sealed class AppController : ApplicationContext
         _window.ResizeRequested += steps => _settings.AdjustScale(steps);
         _window.KeepOnTop = _settings.AlwaysOnTop;
         _window.Alpha = OpacityByte;
+        _ballWindow.KeepOnTop = _settings.AlwaysOnTop;
+        _ballWindow.Alpha = OpacityByte;
+        _ballWindow.Grabbed += () => { if (_sim.Ball is { } b) b.Hold(b.Position); };
+        _ballWindow.Moved += p => { _sim.Ball?.Hold(p); RenderBall(); };
+        _ballWindow.Thrown += v => { _sim.Ball?.Release(v, _dpi); _ballIdle = 0; _sim.NoticeBall(); };
+        _ballWindow.Tapped += () =>
+        {
+            if (_sim.Ball is not { } b) return;
+            b.Kick(new PointD((Random.Shared.NextDouble() - 0.5) * 300 * _dpi, 550 * _dpi));
+            _ballIdle = 0;
+            _sim.NoticeBall();
+        };
 
         _tray = new NotifyIcon
         {
@@ -113,6 +130,13 @@ internal sealed class AppController : ApplicationContext
         // サインイン時の自動起動・自動更新のあとの起動では、止めてある場合だけパネルを出す
         if ((!autostart && !updated && _settings.ShowControlPanelOnLaunch) || !_settings.MascotRunning) OpenControlPanel();
         if (updated) AnnounceUpdated();
+        // 開発用：環境変数 SUZU_DEBUG_BALL=1 で起動すると、すぐにボールを出す（動作確認用）
+        if (Environment.GetEnvironmentVariable("SUZU_DEBUG_BALL") == "1")
+        {
+            var t = new System.Windows.Forms.Timer { Interval = 1500 };
+            t.Tick += (_, _) => { t.Stop(); t.Dispose(); SpawnBall(bySuzu: false); };
+            t.Start();
+        }
     }
 
     // ---- 自動更新 ----
@@ -193,6 +217,7 @@ internal sealed class AppController : ApplicationContext
         _settings.SavedPosition = _sim.Position;
         StopTimers();
         _bubble.Dismiss();
+        HideBall();
         _window.Hide();
         _settings.MascotRunning = false;
         _status.Running = false;
@@ -234,6 +259,71 @@ internal sealed class AppController : ApplicationContext
         _sim.Cfg.WalkSpeed = 42 * _settings.MoveSpeed;
         _sim.Cfg.ClimbSpeed = 28 * _settings.MoveSpeed;
         _sensor.Headroom = h + 20 * _dpi;
+        if (_sim.Ball is { } b) b.Radius = BallRadius;
+    }
+
+    // ---- ボール ----
+
+    private double BallRadius => BodyPx * 0.1;
+
+    /// <summary>ボールを出す。鈴が自分で出すときは手元に、メニューから出すときは鈴の頭上から落とす。</summary>
+    private void SpawnBall(bool bySuzu)
+    {
+        if (_sim.Ball != null || !_status.Running) return;
+        double side = _sim.Facing == Facing.Left ? -1 : 1;
+        var p = _sim.Position;
+        var start = bySuzu
+            ? new PointD(p.X + side * _sim.Cfg.BodyWidth * 0.9, p.Y + BodyPx * 0.45)
+            : new PointD(p.X + side * _sim.Cfg.BodyWidth * 1.5, p.Y + BodyPx * 1.4);
+        var ball = new Ball(start, BallRadius);
+        if (bySuzu) ball.Kick(new PointD(side * 120 * _dpi, 250 * _dpi));
+        _sim.Ball = ball;
+        _ballBySuzu = bySuzu;
+        _ballIdle = 0;
+        _ballWindow.ForceRedraw();
+        if (!_ballWindow.Visible) _ballWindow.Show();
+        RenderBall();
+        if (!bySuzu) _sim.NoticeBall();
+        SetBallOut(true);
+    }
+
+    private void HideBall()
+    {
+        _sim.Ball = null;
+        _ballBySuzu = false;
+        if (_ballWindow.Visible) _ballWindow.Hide();
+        SetBallOut(false);
+    }
+
+    private void ToggleBall()
+    {
+        if (_sim.Ball != null) HideBall();
+        else SpawnBall(bySuzu: false);
+    }
+
+    private void SetBallOut(bool value)
+    {
+        if (_status.BallOut == value) return;
+        _status.BallOut = value;
+        _status.NotifyChanged();
+    }
+
+    /// <summary>毎フレーム：鈴がボールを欲しがったら出し、自分で出したボールは遊び終わって少ししたら片付ける</summary>
+    private void UpdateBall(double dt)
+    {
+        if (_sim.WantsBall) SpawnBall(bySuzu: true);
+        if (_sim.Ball is not { } b) return;
+        if (_ballBySuzu && _sim.Activity != Suzu.Core.Activity.PlayBall && !b.Held)
+        {
+            _ballIdle += dt;
+            if (_ballIdle > 6 && b.IsResting(_dpi)) HideBall();
+        }
+        else _ballIdle = 0;
+    }
+
+    private void RenderBall()
+    {
+        if (_sim.Ball is { } b && _ballWindow.Visible) _ballWindow.Render(b);
     }
 
     /// <summary>鈴のいる画面の拡大率に合わせる（拡大率の違うディスプレイへ移ったとき）</summary>
@@ -273,6 +363,7 @@ internal sealed class AppController : ApplicationContext
         _animationClock += dt;
         _sim.ObserveMouse(EnvironmentSensor.ToSim(Cursor.Position));
         _sim.Step(dt);
+        UpdateBall(dt);
         Render();
         if (now - _lastSave > 30) { _settings.SavedPosition = _sim.Position; _lastSave = now; }
     }
@@ -325,6 +416,7 @@ internal sealed class AppController : ApplicationContext
         var frame = resolved.Frames[index];
         _window.Render(_sprites, frame, resolved.Mirrored, snap.BobOffset, L.EmoteText(snap.Emote), BodyPx, _dpi, _sprites.MaxAspect);
         _window.PlaceFeet(snap.Position);
+        RenderBall();
         if (_bubble.IsShowing) _bubble.Reposition(_window.SpriteRect(BodyPx, _dpi));
     }
 
@@ -341,11 +433,14 @@ internal sealed class AppController : ApplicationContext
                 break;
             case nameof(AppSettings.Opacity):
                 _window.Alpha = OpacityByte;
+                _ballWindow.Alpha = OpacityByte;
+                _ballWindow.ForceRedraw();
                 _window.ForceRedraw();
                 if (_status.Running) Render();
                 break;
             case nameof(AppSettings.AlwaysOnTop):
                 _window.KeepOnTop = _settings.AlwaysOnTop;
+                _ballWindow.KeepOnTop = _settings.AlwaysOnTop;
                 break;
             case nameof(AppSettings.FrameRate):
                 UpdateRefreshRate();
@@ -355,6 +450,10 @@ internal sealed class AppController : ApplicationContext
                 break;
             case nameof(AppSettings.Paused):
                 _sim.Cfg.Paused = _settings.Paused;
+                break;
+            case nameof(AppSettings.AllowBallPlay):
+                _sim.Cfg.AllowBallPlay = _settings.AllowBallPlay;
+                if (!_settings.AllowBallPlay && _ballBySuzu) HideBall();
                 break;
             case nameof(AppSettings.AllowPlaceholders):
                 _sim.Cfg.AllowPlaceholders = _settings.AllowPlaceholders;
@@ -484,6 +583,8 @@ internal sealed class AppController : ApplicationContext
         _menu.Items.Add(L.Pick("コントロールパネル…", "Control Panel…"), null, (_, _) => OpenControlPanel());
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add(L.Pick("鈴を呼ぶ", "Call Suzu"), null, (_, _) => Summon());
+        _menu.Items.Add(new ToolStripMenuItem(_sim.Ball != null ? L.Pick("ボールをしまう", "Put the Ball Away") : L.Pick("ボールで遊ぶ", "Play with a Ball"),
+                                              null, (_, _) => ToggleBall()) { Enabled = _status.Running });
         var pause = new ToolStripMenuItem(L.Pick("自律行動を一時停止", "Pause Autonomous Behavior"), null, (_, _) => _settings.Paused = !_settings.Paused)
         {
             Checked = _settings.Paused,
@@ -547,7 +648,7 @@ internal sealed class AppController : ApplicationContext
 
     private void OpenControlPanel()
     {
-        _controlPanel ??= new ControlPanelForm(_settings, _status, _updater, ToggleRunning, Summon, OpenConversation, OpenSettings, Quit, InstallUpdate);
+        _controlPanel ??= new ControlPanelForm(_settings, _status, _updater, ToggleRunning, Summon, OpenConversation, OpenSettings, Quit, InstallUpdate, ToggleBall);
         UpdateStatusText(force: true);
         BringUp(_controlPanel);
     }
@@ -622,6 +723,7 @@ internal sealed class AppController : ApplicationContext
         _tray.Visible = false;
         _tray.Dispose();
         _bubble.Dispose();
+        _ballWindow.Dispose();
         _window.Dispose();
         _controlPanel?.Dispose();
         _settingsForm?.Dispose();

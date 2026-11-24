@@ -28,6 +28,8 @@ internal sealed class AppSettings
         public double[]? Position { get; set; }
         /// <summary>新しいバージョンをダウンロードしたら、鈴が知らせてから自動で入れ替えて起動し直す</summary>
         public bool AutoInstallUpdates { get; set; } = true;
+        /// <summary>ボール遊びをする（ときどき自分でボールを出して遊ぶ）</summary>
+        public bool AllowBallPlay { get; set; } = true;
     }
 
     public const double BaseBodyHeight = 180;
@@ -114,7 +116,10 @@ internal sealed class AppSettings
         Paused = false;
         AllowMirroring = false;
         AllowPlaceholders = false;
+        AllowBallPlay = true;
     }
+    /// <summary>ボール遊びをする（ときどき自分でボールを出して遊ぶ）</summary>
+    public bool AllowBallPlay { get => _d.AllowBallPlay; set => Set(_d.AllowBallPlay, value, v => _d.AllowBallPlay = v, nameof(AllowBallPlay)); }
     public bool InteractWithWindows { get => _d.InteractWithWindows; set => Set(_d.InteractWithWindows, value, v => _d.InteractWithWindows = v, nameof(InteractWithWindows)); }
     public bool Paused { get => _d.Paused; set => Set(_d.Paused, value, v => _d.Paused = v, nameof(Paused)); }
     /// <summary>左向きの素材がないため、右向きを反転して代用する（髪飾りの位置が逆になる）</summary>

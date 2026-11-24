@@ -34,6 +34,8 @@ public sealed class MascotSimulation
         /// 表示倍率（DPI）に合わせて動きの速さをそろえるのに使う。
         /// </summary>
         public double SpeedScale { get; set; } = 1;
+        /// <summary>ボール遊びをする（ときどき自分でボールを出して遊ぶ）</summary>
+        public bool AllowBallPlay { get; set; } = true;
     }
 
     public readonly record struct Snapshot(PointD Position, Pose Pose, Facing Facing, Emote Emote, Activity Activity, double BobOffset);
@@ -47,6 +49,12 @@ public sealed class MascotSimulation
     public double Energy { get; private set; } = 0.8;
     public Terrain Terrain { get; private set; } = Terrain.Empty;
     public Func<int> HourProvider { get; set; } = () => DateTime.Now.Hour;
+    /// <summary>今出ているボール（App 層が出し入れする）。Step で一緒に動かす。</summary>
+    public Ball? Ball { get; set; }
+    /// <summary>ボール遊びを始めたがボールがない（App 層がボールを出す合図）</summary>
+    public bool WantsBall => Activity == Activity.PlayBall && Ball == null && Motion is Motion.Grounded;
+    /// <summary>これまでに蹴った回数（表示・テスト用）</summary>
+    public int Kicks { get; private set; }
 
     private readonly BehaviorPlanner _planner = new();
     private readonly SplitMix64 _rng;
@@ -61,6 +69,8 @@ public sealed class MascotSimulation
     private PointD? _mouse;
     private double _hoverTime;
     private (Emote Emote, double Seconds)? _transientEmote;
+    private double _kickCooldown;
+    private bool _running;
 
     public MascotSimulation(Config config, SpriteCatalog catalog, ulong? seed = null)
     {
@@ -173,6 +183,16 @@ public sealed class MascotSimulation
 
     public void ShowEmote(Emote e, double seconds) => _transientEmote = (e, seconds);
 
+    /// <summary>ボールが投げられた・出てきたことに気付いて、遊び始める</summary>
+    public void NoticeBall()
+    {
+        if (!Cfg.AllowBallPlay || Cfg.Paused || Ball == null || Motion is not Motion.Grounded) return;
+        if (Activity is Activity.Sleep or Activity.PlayBall or Activity.Dragged or Activity.Falling) return;
+        SetActivity(Activity.PlayBall, _rng.Range(30, 60));
+        _kickCooldown = 0.4;
+        ShowEmote(Emote.Joy, 1.5);
+    }
+
     public void BeginDrag()
     {
         Motion = Motion.Dragged.Instance;
@@ -201,6 +221,7 @@ public sealed class MascotSimulation
         _clock += dt;
         if (_transientEmote is { } te) _transientEmote = te.Seconds - dt > 0 ? (te.Emote, te.Seconds - dt) : null;
         UpdateEnergy(dt);
+        Ball?.Step(dt, Terrain, Cfg.Gravity, S);
 
         switch (Motion)
         {
@@ -291,6 +312,9 @@ public sealed class MascotSimulation
                 else if (Activity == Activity.Walk && _timeLeft <= 0) FinishActivity();
                 break;
             }
+            case Activity.PlayBall:
+                StepPlayBall(floor, dt);
+                break;
             case Activity.LookAround:
                 _lookTimer -= dt;
                 if (_lookTimer <= 0)
@@ -307,6 +331,73 @@ public sealed class MascotSimulation
                 if (_timeLeft <= 0) FinishActivity();
                 break;
         }
+    }
+
+    /// <summary>ボールを追いかけ、届いたら蹴る。時間が来たら、ボールが止まったところで終わる。</summary>
+    private void StepPlayBall(Floor floor, double dt)
+    {
+        _running = false;
+        _kickCooldown -= dt;
+        bool timeUp = _timeLeft <= 0;
+        if (Ball is not { } b)
+        {
+            // App 層がボールを出すのを待つ（出てこなければ時間で終わる）
+            if (timeUp) FinishActivity();
+            return;
+        }
+        double dx = b.Position.X - Position.X;
+        var toward = Math.Abs(dx) < Cfg.BodyWidth * 0.3 ? Facing.Front : (dx > 0 ? Facing.Right : Facing.Left);
+        if (b.Held)
+        {
+            // つかまれている間は見上げて待つ
+            Facing = Catalog.Has(Pose.Stand, toward) ? toward : Facing.Front;
+            if (timeUp) FinishActivity();
+            return;
+        }
+        double bottom = b.Position.Y - b.Radius;
+        bool sameLevel = bottom >= Position.Y - 20 * S && bottom <= Position.Y + Cfg.BodyHeight * 0.5;
+        double reach = Cfg.BodyWidth * 0.45 + b.Radius;
+        var (lo, hi) = ReachableRange(floor);
+        double margin = Cfg.BodyWidth / 2;
+        double target = Math.Clamp(b.Position.X, lo + margin, Math.Max(lo + margin, hi - margin));
+
+        if (!timeUp && sameLevel && Math.Abs(dx) <= reach && _kickCooldown <= 0)
+        {
+            KickBall(b, lo, hi);
+        }
+        else if (!timeUp && Math.Abs(target - Position.X) > reach * 0.6)
+        {
+            // 小走りで追いかける
+            double dir = target > Position.X ? 1 : -1;
+            Facing = dir > 0 ? Facing.Right : Facing.Left;
+            double stepLen = Math.Min(Cfg.WalkSpeed * 1.8 * S * dt, Math.Abs(target - Position.X));
+            double nx = Position.X + dir * stepLen;
+            _walkDistance += stepLen / S;
+            if (!floor.Contains(nx))
+            {
+                if (Terrain.FloorAt(nx, floor.Y) is { } next) Motion = new Motion.Grounded(next);
+                else nx = Math.Clamp(nx, floor.MinX, floor.MaxX);
+            }
+            Position = Position with { X = nx };
+            _running = true;
+        }
+        else
+        {
+            Facing = Catalog.Has(Pose.Stand, toward) ? toward : Facing.Front;
+        }
+        // 時間が来たら、ボールが止まるのを見届けて終わる（弾み続けても 10 秒で切り上げる）
+        if (timeUp && (b.IsResting(S) || _timeLeft < -10)) FinishActivity();
+    }
+
+    private void KickBall(Ball b, double lo, double hi)
+    {
+        // 広い方へ蹴ることが多い（壁際で蹴り続けないように）
+        double dir = _rng.NextDouble() < 0.7 ? (Position.X < (lo + hi) / 2 ? 1 : -1) : (_rng.NextBool() ? 1 : -1);
+        b.Kick(new PointD(dir * _rng.Range(220, 560) * S, _rng.Range(380, 820) * S));
+        Facing = dir > 0 ? Facing.Right : Facing.Left;
+        _kickCooldown = 0.8;
+        Kicks++;
+        if (_rng.NextDouble() < 0.35) ShowEmote(_rng.NextBool() ? Emote.Joy : Emote.Heart, 1.2);
     }
 
     /// <summary>歩行の目的地に到着</summary>
@@ -393,10 +484,13 @@ public sealed class MascotSimulation
     private void FinishActivity()
     {
         _lastActivity = Activity;
+        // ボール遊びは（投げてもらって始めた場合も）終わったらしばらく休む
+        if (Activity == Activity.PlayBall && _planner.Spec(Activity.PlayBall) is { } ps)
+            _planner.CooldownUntil[Activity.PlayBall] = _clock + ps.Cooldown;
         if (Cfg.Paused) { SetActivity(Activity.Idle, 3); return; }
         if (Motion is not Motion.Grounded { Floor: var f }) return;
         var ctx = new BehaviorContext(Energy, HourProvider(), f.Owner.IsWindow, _lastActivity,
-            s => Cfg.AllowPlaceholders || Catalog.Has(s.Pose), NeighborSides(f).Count > 0);
+            s => Cfg.AllowPlaceholders || Catalog.Has(s.Pose), NeighborSides(f).Count > 0, Cfg.AllowBallPlay);
         var (a, d) = _planner.Choose(ctx, _clock, _rng);
         SetActivity(a, d);
         Prepare(a, f);
@@ -453,6 +547,11 @@ public sealed class MascotSimulation
             }
             case Activity.TurnAway:
                 if (Catalog.Has(Pose.Stand, Facing.Back)) Facing = Facing.Back;
+                break;
+            case Activity.PlayBall:
+                _targetX = null;
+                _kickCooldown = 0.6;
+                ShowEmote(Emote.Joy, 1.5);
                 break;
             case Activity.Idle or Activity.Sit or Activity.Sleep or Activity.Doze or Activity.Stretch or Activity.Joy:
                 Facing = Facing.Front;
@@ -568,6 +667,7 @@ public sealed class MascotSimulation
                     case Activity.Stretch: pose = Pose.Stretch; emote = Emote.Stretch; break;
                     case Activity.Joy: pose = Pose.Joy; emote = Emote.Joy; break;
                     case Activity.React: pose = _reactionPose; emote = _reactionEmote; break;
+                    case Activity.PlayBall: pose = _running ? Pose.Walk : Pose.Stand; break;
                     default: pose = Pose.Stand; break;
                 }
                 break;
