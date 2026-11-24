@@ -26,7 +26,8 @@ internal enum UpdateState
 /// <summary>
 /// アプリの自動更新。
 /// GitHub の Releases（Lis-louis/suzu-desktop-focus）に新しい版が出たら裏でダウンロードし、
-/// コントロールパネル・通知領域のメニューに「再起動して更新」を出す。押さずに終了しても、終了するときに入れ替わる。
+/// 鈴が「新しいバージョンに更新します」と知らせてから、10 秒後に自動で入れ替えて起動し直す（AppController）。
+/// 自動で入れる設定をオフにしたときは、コントロールパネル・通知領域のメニューの「再起動して更新」か、終了するときに入れ替わる。
 /// 入れ替えはセットアップウィザード（Inno Setup）を画面なしで動かして行う（設定はそのまま引き継がれる）。
 /// Release はリポジトリ直下の VERSION を上げて main に push すると GitHub Actions（.github/workflows/installers.yml）が作る。
 /// </summary>
@@ -56,6 +57,24 @@ internal sealed class Updater : IDisposable
 
     /// <summary>セットアップウィザードで入れたもの（隣に Inno Setup のアンインストーラーがある）なら自動で入れ替えられる</summary>
     public bool IsInstalled { get; } = Directory.EnumerateFiles(AppContext.BaseDirectory, "unins*.exe").Any();
+
+    /// <summary>
+    /// 確認の画面（UAC）なしで入れ替えられるか。自分のユーザー用（既定の %LOCALAPPDATA%\Programs）なら可。
+    /// 「すべてのユーザー」用に Program Files へ入れたときは管理者の確認が要るので、勝手には入れ替えない。
+    /// </summary>
+    public bool CanInstallSilently => IsInstalled && !NeedsAdmin;
+
+    private static bool NeedsAdmin
+    {
+        get
+        {
+            var dir = AppContext.BaseDirectory;
+            return new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
+                .Select(Environment.GetFolderPath)
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Any(p => dir.StartsWith(Path.TrimEndingDirectorySeparator(p) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        }
+    }
 
     public event Action? Changed;
     /// <summary>新しい版の準備ができたとき（通知を出す）</summary>

@@ -26,6 +26,8 @@ internal sealed class AppSettings
         public string Language { get; set; } =
             System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ja" ? "ja" : "en";
         public double[]? Position { get; set; }
+        /// <summary>新しいバージョンをダウンロードしたら、鈴が知らせてから自動で入れ替えて起動し直す</summary>
+        public bool AutoInstallUpdates { get; set; } = true;
     }
 
     public const double BaseBodyHeight = 180;
@@ -122,6 +124,8 @@ internal sealed class AppSettings
     /// <summary>鈴をデスクトップに表示して動かすか（コントロールパネルの起動/停止）</summary>
     public bool MascotRunning { get => _d.MascotRunning; set => Set(_d.MascotRunning, value, v => _d.MascotRunning = v, nameof(MascotRunning)); }
     public bool ShowControlPanelOnLaunch { get => _d.ShowControlPanelOnLaunch; set => Set(_d.ShowControlPanelOnLaunch, value, v => _d.ShowControlPanelOnLaunch = v, nameof(ShowControlPanelOnLaunch)); }
+    /// <summary>新しいバージョンを自動で入れる（オフなら「再起動して更新」を押したときか終了時だけ）</summary>
+    public bool AutoInstallUpdates { get => _d.AutoInstallUpdates; set => Set(_d.AutoInstallUpdates, value, v => _d.AutoInstallUpdates = v, nameof(AutoInstallUpdates)); }
     /// <summary>表示言語（既定は日本語）</summary>
     public AppLanguage Language { get => LanguageExtensions.FromCode(_d.Language); set => Set(_d.Language, value.Code(), v => _d.Language = v, nameof(Language)); }
 

@@ -29,8 +29,9 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
 
         bool autostart = args.Any(a => a.Equals("--autostart", StringComparison.OrdinalIgnoreCase));
+        bool updated = args.Any(a => a.Equals("--updated", StringComparison.OrdinalIgnoreCase));
         AppController controller;
-        try { controller = new AppController(autostart); }
+        try { controller = new AppController(autostart, updated); }
         catch (Exception) { return 1; }
 
         using var reopen = new EventWaitHandle(false, EventResetMode.AutoReset, ReopenEventName);

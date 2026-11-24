@@ -31,10 +31,17 @@
 - `windows/Suzu/App/Updater.cs`。起動 10 秒後と 3 時間ごとに
   `GET https://api.github.com/repos/Lis-louis/suzu-desktop-focus/releases/latest` を見て、
   `SuzuSetup-*-x64.exe` を `%LOCALAPPDATA%\Suzu\Updates` にダウンロード（大きさと、GitHub の `digest` の SHA-256 を確認）。
-- 準備ができたら通知（バルーン）→ コントロールパネル上部の `UpdateBanner`・通知領域メニューに「再起動して更新」。
-  押すと `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CLOSEAPPLICATIONS /RELAUNCH=1` でインストーラーを動かして終了。
-  押さずに「終了」しても `/RELAUNCH` なしで入れ替わる。
+- **0.4.0 から自動で入れ替える**（アプリは開きっぱなしで使われるため）。ダウンロードが終わると鈴が吹き出しで
+  「アプリを更新しますね。少しのあいだだけ消えます！」と知らせ（鈴を止めているときは通知バルーン）、10 秒後に
+  `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CLOSEAPPLICATIONS /RELAUNCH=1` でインストーラーを動かして終了する（`AppController.ScheduleAutoInstall`）。
+- 起動し直すときはインストーラーが `--updated` を付けるので、鈴が「バージョン X になりました！」と言う（コントロールパネルは出さない）。
+- 設定「新しいバージョンを自動で入れる」（`AutoInstallUpdates`・既定オン）をオフにしたとき、または Program Files に
+  入れていて管理者の確認（UAC）が要るときは自動では入れ替えず、通知 → コントロールパネル上部の `UpdateBanner`・
+  通知領域メニューの「再起動して更新」で入れ替える。押さずに「終了」しても `/RELAUNCH` なしで入れ替わる。
 - `/RELAUNCH=1` は `windows/installer/Suzu.iss` の `[Run]`（`Check: ShouldRelaunch`）で鈴を起動し直すためのもの。
+- インストーラーの「Windows へのサインイン時に鈴を起動する」は 0.4.0 から既定でオン（上書き・自動更新では前回の選択を引き継ぐ）。
+- 確かめ方：`VERSION` を公開中の版より低くして `windowsuild.ps1` でビルド → そのインストーラーを入れて起動すると、
+  公開中の版に自動で入れ替わる（0.2.9 → 0.3.0 で確認済み）。
 - インストールせずに動かしているとき（exe の隣に `unins*.exe` がない）は入れ替えず、ダウンロードページを開くだけ。
 - 設定画面の「アプリ」欄にバージョンと「アップデートを確認」。
 - バージョン比較と Release の JSON の読み取りは `windows/Suzu.Core/Release.cs`（テストは `CoreTests.cs` の `ReleaseTests`）。

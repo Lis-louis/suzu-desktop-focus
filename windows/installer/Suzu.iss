@@ -2,7 +2,7 @@
 ;
 ; 通常は windows\build.ps1 から実行する（exe の作成 → 使用許諾の文書の用意 → このスクリプトのコンパイル）。
 ; 手動で実行する場合:
-;   iscc /DAppVersion=0.3.0 /DPublishDir=..\..\build\windows\publish /DLicenseDir=..\..\build\windows\license windows\installer\Suzu.iss
+;   iscc /DAppVersion=0.4.0 /DPublishDir=..\..\build\windows\publish /DLicenseDir=..\..\build\windows\license windows\installer\Suzu.iss
 ;
 ; ウィザードの流れ: 言語の選択 → ようこそ → 使用許諾（MIT ＋ キャラクター利用ガイドライン）
 ;                   → インストール先 → 追加のタスク（デスクトップアイコン・自動起動）→ 確認 → インストール → 完了（鈴を起動）
@@ -12,7 +12,7 @@
 ; 前回のインストール先・言語・タスクはそのまま引き継がれる。/RELAUNCH=1 のときは終わったら鈴を起動し直す。
 
 #ifndef AppVersion
-  #define AppVersion "0.3.0"
+  #define AppVersion "0.4.0"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\..\build\windows\publish"
@@ -89,7 +89,8 @@ en.DeleteSettings=Also delete Suzu's settings (size, position, language, etc.)?%
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "autostart"; Description: "{cm:AutoStartTask}"; GroupDescription: "{cm:StartupGroup}"; Flags: unchecked
+; サインイン時の起動は既定でオン（ウィザードで外せる。上書き・自動更新のときは前回の選択を引き継ぐ）
+Name: "autostart"; Description: "{cm:AutoStartTask}"; GroupDescription: "{cm:StartupGroup}"
 
 [Files]
 Source: "{#PublishDir}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -108,8 +109,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
-; 自動更新の「再起動して更新」：画面なしで入れ替えたあと、鈴を起動し直す
-Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: ShouldRelaunch
+; 自動更新：画面なしで入れ替えたあと、鈴を起動し直す（--updated で「新しいバージョンになりました」と知らせる）
+Filename: "{app}\{#AppExe}"; Parameters: "--updated"; Flags: nowait runasoriginaluser; Check: ShouldRelaunch
 
 [UninstallRun]
 ; 起動中の鈴を終了してからファイルを削除する

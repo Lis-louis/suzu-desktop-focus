@@ -328,6 +328,7 @@ internal sealed class SettingsForm : SuzuForm
     private readonly Label _version = MakeLabel();
     private readonly Label _updateState = MakeLabel(8.5f);
     private readonly Button _updateButton = new() { AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
+    private readonly CheckBox _autoUpdate = MakeCheck();
     private readonly Updater _updater;
     private bool _updating;
 
@@ -363,7 +364,7 @@ internal sealed class SettingsForm : SuzuForm
             _behaviorHeader, _interact, _pause, speedRow, Divider(),
             _tempHeader, _mirror, _placeholders, _tempNote, Divider(),
             _startupHeader, _login, Divider(),
-            _appHeader, _version, _updateState, _updateButton, Divider(),
+            _appHeader, _version, _autoUpdate, _updateState, _updateButton, Divider(),
             _reset,
         });
         if (_missingAssets.Count > 0) col.Controls.AddRange(new Control[] {Divider(), _missingHeader, _missing});
@@ -385,6 +386,7 @@ internal sealed class SettingsForm : SuzuForm
         _placeholders.CheckedChanged += (_, _) => { if (!_updating) _settings.AllowPlaceholders = _placeholders.Checked; };
         _login.CheckedChanged += (_, _) => { if (!_updating) _settings.LaunchAtLogin = _login.Checked; };
         _updateState.MaximumSize = new Size(420, 0);
+        _autoUpdate.CheckedChanged += (_, _) => { if (!_updating) _settings.AutoInstallUpdates = _autoUpdate.Checked; };
         _updateButton.Click += (_, _) =>
         {
             switch (_updater.State)
@@ -415,6 +417,9 @@ internal sealed class SettingsForm : SuzuForm
         var st = _updater.State;
         _appHeader.Text = L.Pick("アプリ", "App");
         _version.Text = L.Pick($"バージョン {_updater.Current}", $"Version {_updater.Current}");
+        _autoUpdate.Text = L.Pick("新しいバージョンを自動で入れる（鈴が知らせてから再起動します）",
+                                  "Install new versions automatically (Suzu lets you know, then restarts)");
+        _autoUpdate.Checked = _settings.AutoInstallUpdates;
         var note = _updater.Describe(L);
         if (note.Length == 0)
             note = L.Pick("新しいバージョンは自動で確認し、ダウンロードします。", "New versions are checked for and downloaded automatically.");

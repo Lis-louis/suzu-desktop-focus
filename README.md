@@ -41,7 +41,7 @@ Version 0.2.0 and later are on [Releases](https://github.com/Lis-louis/suzu-desk
 | Windows | [`SuzuSetup-0.1.0.exe`](SuzuSetup-0.1.0.exe) | [Direct download](https://github.com/Lis-louis/suzu-desktop-focus/raw/main/SuzuSetup-0.1.0.exe) |
 
 - **macOS**: open the `.pkg` and follow the installer (Welcome → License → Install). Suzu.app goes into Applications and starts when the installer finishes.
-- **Windows**: run the `.exe` and follow the setup wizard (License → Install location → Desktop icon / start at sign-in → Install). It installs for the current user, so no administrator rights are needed.
+- **Windows**: run the `.exe` and follow the setup wizard (License → Install location → Desktop icon / start at sign-in, on by default → Install). It installs for the current user, so no administrator rights are needed.
 
 To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On Windows, use **Settings → Apps → Installed apps → 鈴 Suzu → Uninstall**.
 
@@ -53,7 +53,7 @@ To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On
 
 Suzu checks for a new version 10 seconds after it starts and every 3 hours after that, and downloads it in the background (you can also check right away with **Check for updates** under Settings → **App**). Your settings are kept.
 
-- **Windows**: when the update is ready, a notification appears and **Restart to update** shows up in the Control Panel and the tray menu. Click it to install silently and restart Suzu. If you quit the app instead, the update is installed as it quits
+- **Windows** (0.4.0 and later): when the update is ready, Suzu says she's updating the app, and 10 seconds later it is installed and Suzu restarts automatically. If you turn off **Install new versions automatically** under Settings → **App**, the update is installed only when you click **Restart to update** in the Control Panel or the tray menu (or when you quit the app)
 - **macOS**: when the update is ready, Suzu tells you in a speech bubble and **Install Update** shows up in the Control Panel and the menu bar menu. Click it to open the installer and follow the steps (an administrator password is needed). Suzu restarts when the installation finishes
 
 If you are on a version without automatic updates (Windows 0.1.0, macOS 0.2.0 or earlier), install the new version manually once.

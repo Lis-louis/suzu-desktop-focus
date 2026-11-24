@@ -22,6 +22,8 @@ internal sealed class AppController : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu = new();
     private readonly Updater _updater;
+    /// <summary>自動更新の予告から入れ替えまでの待ち時間</summary>
+    private readonly System.Windows.Forms.Timer _autoInstallTimer = new() { Interval = 10_000 };
 
     private readonly FrameClock _frameClock;
     private int _framesSinceMeasure;
@@ -40,7 +42,9 @@ internal sealed class AppController : ApplicationContext
 
     private AppLanguage L => _settings.Language;
 
-    public AppController(bool autostart)
+    /// <param name="autostart">Windows へのサインイン時の自動起動</param>
+    /// <param name="updated">自動更新で入れ替わったあとの起動（インストーラーが --updated を付けて起動する）</param>
+    public AppController(bool autostart, bool updated = false)
     {
         try { _sprites = new SpriteStore(); }
         catch (Exception e)
@@ -88,10 +92,12 @@ internal sealed class AppController : ApplicationContext
         _menu.Opening += (_, e) => { BuildMenu(); e.Cancel = false; };
 
         _updater = new Updater();
-        _updater.BecameReady += () => _tray.ShowBalloonTip(8000, L.Pick("鈴", "Suzu"),
-            L.Pick($"新しいバージョン {_updater.Release?.Version} の準備ができました。コントロールパネルの「再起動して更新」で入れ替わります（アプリを終了したときにも入れ替わります）。",
-                   $"Version {_updater.Release?.Version} is ready. Choose \"Restart to update\" in the Control Panel (it is also installed when you quit)."),
-            ToolTipIcon.Info);
+        _updater.BecameReady += OnUpdateReady;
+        _autoInstallTimer.Tick += (_, _) =>
+        {
+            _autoInstallTimer.Stop();
+            if (_settings.AutoInstallUpdates && _updater.State == UpdateState.Ready) InstallUpdate();
+        };
         _updater.Start();
 
         _frameClock = new FrameClock(Tick);
@@ -104,8 +110,67 @@ internal sealed class AppController : ApplicationContext
         SetupBridge();
 
         if (_settings.MascotRunning) StartMascot(); else _status.Running = false;
-        // サインイン時の自動起動では、止めてある場合だけパネルを出す
-        if ((!autostart && _settings.ShowControlPanelOnLaunch) || !_settings.MascotRunning) OpenControlPanel();
+        // サインイン時の自動起動・自動更新のあとの起動では、止めてある場合だけパネルを出す
+        if ((!autostart && !updated && _settings.ShowControlPanelOnLaunch) || !_settings.MascotRunning) OpenControlPanel();
+        if (updated) AnnounceUpdated();
+    }
+
+    // ---- 自動更新 ----
+
+    /// <summary>新しい版のダウンロードが終わったとき</summary>
+    private void OnUpdateReady()
+    {
+        var v = _updater.Release?.Version;
+        if (_settings.AutoInstallUpdates && _updater.CanInstallSilently)
+        {
+            ScheduleAutoInstall();
+            return;
+        }
+        _tray.ShowBalloonTip(8000, L.Pick("鈴", "Suzu"),
+            L.Pick($"新しいバージョン {v} の準備ができました。コントロールパネルの「再起動して更新」で入れ替わります（アプリを終了したときにも入れ替わります）。",
+                   $"Version {v} is ready. Choose \"Restart to update\" in the Control Panel (it is also installed when you quit)."),
+            ToolTipIcon.Info);
+    }
+
+    /// <summary>鈴が「更新します」と知らせてから、10 秒後に入れ替えて起動し直す</summary>
+    private void ScheduleAutoInstall()
+    {
+        if (_autoInstallTimer.Enabled) return;
+        var v = _updater.Release?.Version;
+        var text = L.Pick($"新しいバージョン（{v}）が届いたので、アプリを更新しますね。少しのあいだだけ消えます！",
+                          $"Version {v} has arrived, so I'm updating the app. I'll be gone for just a moment!");
+        if (_status.Running)
+        {
+            _sim.React(Pose.Joy, Emote.Joy, 3);
+            ShowBubble(text, 10);
+        }
+        else
+        {
+            _tray.ShowBalloonTip(8000, L.Pick("鈴", "Suzu"), text, ToolTipIcon.Info);
+        }
+        _autoInstallTimer.Start();
+    }
+
+    /// <summary>自動更新で入れ替わったあと、少し待ってから知らせる</summary>
+    private void AnnounceUpdated()
+    {
+        var timer = new System.Windows.Forms.Timer { Interval = 2500 };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            timer.Dispose();
+            var text = L.Pick($"バージョン {_updater.Current} になりました！", $"I'm now on version {_updater.Current}!");
+            if (_status.Running)
+            {
+                _sim.React(Pose.Joy, Emote.Joy, 2);
+                ShowBubble(text, 6);
+            }
+            else
+            {
+                _tray.ShowBalloonTip(5000, L.Pick("鈴", "Suzu"), text, ToolTipIcon.Info);
+            }
+        };
+        timer.Start();
     }
 
     // ---- 起動・停止（アプリ自体は動いたまま、鈴だけを出し入れする） ----
@@ -300,6 +365,10 @@ internal sealed class AppController : ApplicationContext
             case nameof(AppSettings.InteractWithWindows):
                 _sensor.InteractWithWindows = _settings.InteractWithWindows;
                 RefreshTerrain();
+                break;
+            case nameof(AppSettings.AutoInstallUpdates):
+                if (!_settings.AutoInstallUpdates) _autoInstallTimer.Stop();
+                else if (_updater.State == UpdateState.Ready && _updater.CanInstallSilently) ScheduleAutoInstall();
                 break;
             case nameof(AppSettings.Language):
                 _tray.Text = L.Pick("鈴", "Suzu");
@@ -545,6 +614,7 @@ internal sealed class AppController : ApplicationContext
         StopTimers();
         _frameClock.Dispose();
         _bridge.Stop();
+        _autoInstallTimer.Dispose();
         _updater.Dispose();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
