@@ -36,6 +36,8 @@ final class AppSettings: ObservableObject {
     }
     @Published var interactWithWindows: Bool { didSet { d.set(interactWithWindows, forKey: "interactWithWindows") } }
     @Published var paused: Bool { didSet { d.set(paused, forKey: "paused") } }
+    /// ボール遊びをする（ときどき自分でボールを出して遊ぶ）
+    @Published var allowBallPlay: Bool { didSet { d.set(allowBallPlay, forKey: "allowBallPlay") } }
     /// 左向きの素材がないため、右向きを反転して代用する（髪飾りの位置が逆になる）
     @Published var allowMirroring: Bool { didSet { d.set(allowMirroring, forKey: "allowMirroring") } }
     /// 素材が未完成の行動（座る・眠る・登る等）を立ち姿＋吹き出しで試す
@@ -82,12 +84,13 @@ final class AppSettings: ObservableObject {
         frameRate = 0
         interactWithWindows = true
         paused = false
+        allowBallPlay = true
         allowMirroring = false
         allowPlaceholders = false
     }
 
     init() {
-        d.register(defaults: ["scale": 1.0, "opacity": 1.0, "alwaysOnTop": true, "moveSpeed": 1.0, "frameRate": 0, "interactWithWindows": true, "paused": false,
+        d.register(defaults: ["scale": 1.0, "opacity": 1.0, "alwaysOnTop": true, "moveSpeed": 1.0, "frameRate": 0, "interactWithWindows": true, "paused": false, "allowBallPlay": true,
                               "allowMirroring": false, "allowPlaceholders": false,
                               "mascotRunning": true, "showControlPanelOnLaunch": true, "language": "ja"])
         scale = Self.clampScale(d.double(forKey: "scale"))
@@ -97,6 +100,7 @@ final class AppSettings: ObservableObject {
         frameRate = max(0, d.integer(forKey: "frameRate"))
         interactWithWindows = d.bool(forKey: "interactWithWindows")
         paused = d.bool(forKey: "paused")
+        allowBallPlay = d.bool(forKey: "allowBallPlay")
         allowMirroring = d.bool(forKey: "allowMirroring")
         allowPlaceholders = d.bool(forKey: "allowPlaceholders")
         mascotRunning = d.bool(forKey: "mascotRunning")
@@ -157,6 +161,7 @@ struct SettingsView: View {
             }
             Section(L.pick("行動", "Behavior")) {
                 Toggle(L.pick("ウィンドウの上に乗る・飛び降りる", "Climb onto and jump off windows"), isOn: $settings.interactWithWindows)
+                Toggle(L.pick("ボール遊びをする（ときどき自分でボールを出して遊びます）", "Play with a ball (sometimes brings one out on her own)"), isOn: $settings.allowBallPlay)
                 Toggle(L.pick("自律行動を一時停止", "Pause autonomous behavior"), isOn: $settings.paused)
                 HStack {
                     Text(L.pick("動く速さ", "Movement speed"))

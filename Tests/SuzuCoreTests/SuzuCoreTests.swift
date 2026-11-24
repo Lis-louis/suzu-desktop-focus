@@ -305,6 +305,132 @@ final class MultiScreenTests: XCTestCase {
     }
 }
 
+final class BallTests: XCTestCase {
+    let screen = ScreenInfo(id: 1, visibleFrame: CGRect(x: 0, y: 80, width: 1600, height: 900))
+    lazy var floor = Terrain.build(screens: [screen], windows: [], headroom: 200)
+    let manifest = SpriteManifest(entries: [
+        .init(pose: .stand, facing: .front, frames: ["front"]),
+        .init(pose: .walk, facing: .right, frames: ["side_right"], bob: true),
+    ])
+
+    func run(_ b: Ball, seconds: Double, terrain: Terrain? = nil) {
+        for _ in 0..<Int(seconds * 60) { b.step(1.0 / 60, terrain: terrain ?? floor, gravity: 2200) }
+    }
+
+    func testBouncesThenRestsOnFloor() {
+        let b = Ball(center: CGPoint(x: 500, y: 700), radius: 18)
+        var bounced = false
+        for _ in 0..<(60 * 4) {
+            b.step(1.0 / 60, terrain: floor, gravity: 2200)
+            if b.velocity.dy > 0 { bounced = true }
+        }
+        XCTAssertTrue(bounced)
+        XCTAssertTrue(b.onFloor)
+        XCTAssertEqual(b.position.y, 80 + 18, accuracy: 1)
+    }
+
+    func testRollsToAStop() {
+        let b = Ball(center: CGPoint(x: 500, y: 98), radius: 18)
+        run(b, seconds: 0.5)
+        b.kick(CGVector(dx: 300, dy: 0))
+        run(b, seconds: 8)
+        XCTAssertTrue(b.isResting)
+        XCTAssertGreaterThan(b.position.x, 520)
+    }
+
+    func testBouncesOffScreenEdges() {
+        let b = Ball(center: CGPoint(x: 1500, y: 300), radius: 18)
+        b.kick(CGVector(dx: 2000, dy: 0))
+        run(b, seconds: 3)
+        XCTAssertGreaterThanOrEqual(b.position.x, 18)
+        XCTAssertLessThanOrEqual(b.position.x, 1600 - 18)
+    }
+
+    func testLandsOnWindowTop() {
+        let t = Terrain.build(screens: [screen], windows: [WindowInfo(id: 7, frame: CGRect(x: 300, y: 200, width: 600, height: 400))], headroom: 200)
+        let b = Ball(center: CGPoint(x: 500, y: 900), radius: 18)
+        run(b, seconds: 4, terrain: t)
+        XCTAssertEqual(b.position.y, 600 + 18, accuracy: 1)
+    }
+
+    func testHeldBallDoesNotFallAndCanBeThrown() {
+        let b = Ball(center: CGPoint(x: 500, y: 700), radius: 18)
+        b.hold(at: CGPoint(x: 600, y: 800))
+        run(b, seconds: 1)
+        XCTAssertEqual(b.position, CGPoint(x: 600, y: 800))
+        b.release(velocity: CGVector(dx: -500, dy: 300))
+        b.step(1.0 / 60, terrain: floor, gravity: 2200)
+        XCTAssertFalse(b.held)
+        XCTAssertLessThan(b.position.x, 600)
+    }
+
+    func testRollingRightSpinsClockwise() {
+        let b = Ball(center: CGPoint(x: 500, y: 98), radius: 18)
+        b.step(1.0 / 60, terrain: floor, gravity: 2200)
+        b.kick(CGVector(dx: 300, dy: 0))
+        run(b, seconds: 0.5)
+        XCTAssertGreaterThan(b.angle, 0)
+    }
+
+    func makeSim(allowBall: Bool = true) -> MascotSimulation {
+        var c = MascotSimulation.Config(); c.allowBallPlay = allowBall
+        let sim = MascotSimulation(config: c, catalog: SpriteCatalog(manifest: manifest), seed: 7)
+        sim.hourProvider = { 14 }
+        sim.updateTerrain(floor)
+        sim.place(at: CGPoint(x: 800, y: 80))
+        return sim
+    }
+
+    func testChasesAndKicksTheBall() {
+        let sim = makeSim()
+        sim.ball = Ball(center: CGPoint(x: 1000, y: 98), radius: 18)
+        sim.force(.playBall, duration: 30)
+        var i = 0
+        while i < 30 * 20 && sim.kicks == 0 { sim.step(1.0 / 30); i += 1 }
+        XCTAssertGreaterThan(sim.kicks, 0)
+        XCTAssertEqual(sim.position.x, 1000, accuracy: 50)
+    }
+
+    func testKeepsPlayingAndThenStops() {
+        let sim = makeSim()
+        sim.ball = Ball(center: CGPoint(x: 900, y: 98), radius: 18)
+        sim.force(.playBall, duration: 25)
+        for _ in 0..<(30 * 25) { sim.step(1.0 / 30) }
+        XCTAssertGreaterThanOrEqual(sim.kicks, 3, "kicks=\(sim.kicks)")
+        for _ in 0..<(30 * 30) { sim.step(1.0 / 30) }
+        XCTAssertNotEqual(sim.activity, .playBall)
+    }
+
+    func testAsksForBallWhenPlayingWithoutOne() {
+        let sim = makeSim()
+        sim.force(.playBall, duration: 30)
+        XCTAssertTrue(sim.wantsBall)
+        sim.ball = Ball(center: CGPoint(x: 900, y: 300), radius: 18)
+        XCTAssertFalse(sim.wantsBall)
+    }
+
+    func testNoticesThrownBallUnlessDisabled() {
+        let sim = makeSim()
+        sim.ball = Ball(center: CGPoint(x: 900, y: 300), radius: 18)
+        sim.noticeBall()
+        XCTAssertEqual(sim.activity, .playBall)
+
+        let off = makeSim(allowBall: false)
+        off.ball = Ball(center: CGPoint(x: 900, y: 300), radius: 18)
+        off.noticeBall()
+        XCTAssertNotEqual(off.activity, .playBall)
+    }
+
+    func testPlannerSkipsBallPlayWhenDisabled() {
+        let p = BehaviorPlanner()
+        let spec = p.spec(.playBall)!
+        var on = BehaviorContext(energy: 0.9, hour: 14, onWindow: false, canPlayBall: true, last: nil) { _ in true }
+        XCTAssertGreaterThan(p.weight(of: spec, in: on, now: 0), 0)
+        on.canPlayBall = false
+        XCTAssertEqual(p.weight(of: spec, in: on, now: 0), 0)
+    }
+}
+
 final class BridgeTests: XCTestCase {
     func testDecode() {
         XCTAssertEqual(DistributedNotificationBridge.decode(#"{"type":"expression","pose":"joy","duration":2}"#), .expression(.joy, duration: 2))

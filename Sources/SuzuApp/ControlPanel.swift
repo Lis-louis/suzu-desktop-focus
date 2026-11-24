@@ -11,6 +11,8 @@ final class MascotStatus: ObservableObject {
     @Published var maxRefreshRate = 60
     /// 実際に描画できている回数（1 秒あたり）
     @Published var measuredFPS = 0
+    /// ボールが出ている
+    @Published var ballOut = false
     /// 設定画面が開いているか（開いているときだけ fps を更新する）
     var settingsVisible = false
 }
@@ -22,6 +24,7 @@ struct ControlPanelView: View {
     @ObservedObject var updater: Updater
     var onToggleRunning: () -> Void
     var onSummon: () -> Void
+    var onToggleBall: () -> Void
     var onConversation: () -> Void
     var onSettings: () -> Void
     var onQuit: () -> Void
@@ -65,6 +68,8 @@ struct ControlPanelView: View {
 
             HStack {
                 Button(L.pick("呼ぶ", "Call"), systemImage: "hand.wave", action: onSummon).disabled(!status.running)
+                Button(status.ballOut ? L.pick("ボールをしまう", "Put Ball Away") : L.pick("ボール", "Ball"),
+                       systemImage: "circle.circle", action: onToggleBall).disabled(!status.running)
                 Button(L.pick("話す", "Chat"), systemImage: "bubble.left", action: onConversation)
                 Button(L.pick("設定", "Settings"), systemImage: "gearshape", action: onSettings)
             }
@@ -85,7 +90,7 @@ struct ControlPanelView: View {
             }
         }
         .padding(20)
-        .frame(width: 360)
+        .frame(width: 400)
     }
 }
 

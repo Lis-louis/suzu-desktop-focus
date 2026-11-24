@@ -39,6 +39,7 @@ internal static class LanguageExtensions
         Activity.Joy => l.Pick("ごきげん", "In a good mood"),
         Activity.GoToEdge => l.Pick("画面の端へ向かっている", "Heading to the screen edge"),
         Activity.CrossScreen => l.Pick("隣の画面へお出かけ中", "Heading over to the other screen"),
+        Activity.PlayBall => l.Pick("ボールで遊んでいる", "Playing with a ball"),
         Activity.JumpDown => l.Pick("飛び降りようとしている", "About to jump down"),
         Activity.Climb => l.Pick("よじ登っている", "Climbing"),
         Activity.Hang => l.Pick("ぶら下がっている", "Hanging"),

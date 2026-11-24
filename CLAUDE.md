@@ -67,7 +67,7 @@
 - バージョン比較・JSON の読み取りは `Sources/SuzuCore/Release.swift`（Windows の `Release.cs` と同じ内容）、テストは `ReleaseTests`。
 - Windows 上で書き、GitHub Actions の Mac（macos-15）で `swift test` とアプリのビルドが通ることまで確認した（PR #4）。
 
-## ボール遊び（Windows 版 0.5.0 で導入）
+## ボール遊び（Windows 版 0.5.0・Mac 版 0.5.3 で導入）
 
 - 物理は `windows/Suzu.Core/Ball.cs`（床で弾む・転がる・画面の端で跳ね返る・つかんで投げる）。
   行動は `Activity.PlayBall`（`Behavior.cs` の `BehaviorSpec`・`MascotSimulation.StepPlayBall`）：ボールへ小走りで寄り、届いたら蹴る。
@@ -77,6 +77,10 @@
 - 表示は `windows/Suzu/App/BallWindow.cs`（模様が転がりに合わせて回る。ドラッグで投げる・クリックで弾む）。
 - 設定「ボール遊びをする」（`AllowBallPlay`・既定オン）。テストは `CoreTests.cs` の `BallTests`。
 - 動作確認：環境変数 `SUZU_DEBUG_BALL=1` を付けて起動すると、1.5 秒後にボールが出る。
+- Mac 版：物理は `Sources/SuzuCore/Ball.swift`、行動は `MascotSimulation.swift` の `stepPlayBall`（Windows と同じ内容。
+  Mac はポイント単位なので速さの倍率 `SpeedScale` はない）。表示は `Sources/SuzuApp/BallWindow.swift`、
+  出し入れは `AppDelegate` の「ボール」の節。テストは `SuzuCoreTests.swift` の `BallTests`。
+  `SUZU_DEBUG_BALL=1 .build/debug/Suzu` で同じように確かめられる。
 
 ## 画像の向き
 
@@ -96,11 +100,6 @@
   Sparkle（SwiftPM で入る。appcast と EdDSA 署名が必要）を検討する。
 - インストール後に postinstall で鈴が起動し直すこと、設定（UserDefaults）が引き継がれること。
 - 問題がなければこの節を消し、上の見出しの「実機での確認がまだ」を外す。
-
-- **ボール遊びを Mac 版にも移植する**：`Sources/SuzuCore` に `Ball.swift`（Windows の `Ball.cs` と同じ内容）と
-  `MascotSimulation.swift` の `PlayBall`・`Behavior.swift` の `BehaviorSpec`、テスト（`BallTests`）を足し、
-  `Sources/SuzuApp` にボール用の透明パネル（ドラッグで投げる・クリックで弾む）と、メニュー・コントロールパネルの「ボール」、
-  設定「ボール遊びをする」を足す。終わったら README の「ボール遊びは今のところ Windows 版だけ」を直す。
 
 ほか：
 - 0.2.0 以前の Mac 版には自動更新がないので、その利用者は 0.3.0 を一度だけ手で入れ直す必要がある（README に記載済み）。

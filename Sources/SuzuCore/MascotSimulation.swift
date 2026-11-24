@@ -15,6 +15,8 @@ public final class MascotSimulation {
         public var allowPlaceholders = false
         /// 自律行動を止める
         public var paused = false
+        /// ボール遊びをする（ときどき自分でボールを出して遊ぶ）
+        public var allowBallPlay = true
         public init() {}
     }
 
@@ -45,6 +47,15 @@ public final class MascotSimulation {
     public private(set) var energy: Double = 0.8
     public private(set) var terrain: Terrain = .empty
     public var hourProvider: () -> Int = { Calendar.current.component(.hour, from: Date()) }
+    /// 今出ているボール（App 層が出し入れする）。step で一緒に動かす。
+    public var ball: Ball?
+    /// ボール遊びを始めたがボールがない（App 層がボールを出す合図）
+    public var wantsBall: Bool {
+        guard activity == .playBall, ball == nil, case .grounded = motion else { return false }
+        return true
+    }
+    /// これまでに蹴った回数（表示・テスト用）
+    public private(set) var kicks = 0
 
     private var planner = BehaviorPlanner()
     private var rng: SplitMix64
@@ -59,6 +70,8 @@ public final class MascotSimulation {
     private var mouse: CGPoint?
     private var hoverTime: Double = 0
     private var transientEmote: (Emote, Double)?
+    private var kickCooldown: Double = 0
+    private var running = false
 
     public init(config: Config = Config(), catalog: SpriteCatalog, seed: UInt64 = UInt64(Date().timeIntervalSince1970)) {
         self.config = config
@@ -157,6 +170,15 @@ public final class MascotSimulation {
 
     public func showEmote(_ e: Emote, for seconds: Double) { transientEmote = (e, seconds) }
 
+    /// ボールが投げられた・出てきたことに気付いて、遊び始める
+    public func noticeBall() {
+        guard config.allowBallPlay, !config.paused, ball != nil, case .grounded = motion else { return }
+        if [.sleep, .playBall, .dragged, .falling].contains(activity) { return }
+        setActivity(.playBall, duration: Double.random(in: 30...60, using: &rng))
+        kickCooldown = 0.4
+        showEmote(.joy, for: 1.5)
+    }
+
     public func beginDrag() {
         motion = .dragged
         activity = .dragged
@@ -181,6 +203,7 @@ public final class MascotSimulation {
         clock += dt
         if let (e, t) = transientEmote { transientEmote = t - dt > 0 ? (e, t - dt) : nil }
         updateEnergy(dt)
+        ball?.step(dt, terrain: terrain, gravity: config.gravity)
 
         switch motion {
         case .dragged:
@@ -257,6 +280,8 @@ public final class MascotSimulation {
             if abs(tx - position.x) <= stepLen { position.x = tx; arrive() }
             // 散歩だけは時間切れで途中終了（目的地へ瞬間移動はしない）
             else if activity == .walk && timeLeft <= 0 { finishActivity() }
+        case .playBall:
+            stepPlayBall(on: floor, dt)
         case .lookAround:
             lookTimer -= dt
             if lookTimer <= 0 {
@@ -269,6 +294,65 @@ public final class MascotSimulation {
             if activity == .idle { trackMouse(dt) }
             if timeLeft <= 0 { finishActivity() }
         }
+    }
+
+    /// ボールを追いかけ、届いたら蹴る。時間が来たら、ボールが止まったところで終わる。
+    private func stepPlayBall(on floor: Floor, _ dt: Double) {
+        running = false
+        kickCooldown -= dt
+        let timeUp = timeLeft <= 0
+        guard let b = ball else {
+            // App 層がボールを出すのを待つ（出てこなければ時間で終わる）
+            if timeUp { finishActivity() }
+            return
+        }
+        let dx = b.position.x - position.x
+        let toward: Facing = abs(dx) < config.bodyWidth * 0.3 ? .front : (dx > 0 ? .right : .left)
+        if b.held {
+            // つかまれている間は見上げて待つ
+            facing = catalog.has(.stand, facing: toward) ? toward : .front
+            if timeUp { finishActivity() }
+            return
+        }
+        let bottom = b.position.y - b.radius
+        let sameLevel = bottom >= position.y - 20 && bottom <= position.y + config.bodyHeight * 0.5
+        let reach = config.bodyWidth * 0.45 + b.radius
+        let range = reachableRange(from: floor)
+        let margin = config.bodyWidth / 2
+        let target = min(max(b.position.x, range.lowerBound + margin), max(range.lowerBound + margin, range.upperBound - margin))
+
+        if !timeUp && sameLevel && abs(dx) <= reach && kickCooldown <= 0 {
+            kickBall(b, range: range)
+        } else if !timeUp && abs(target - position.x) > reach * 0.6 {
+            // 小走りで追いかける
+            let dir: CGFloat = target > position.x ? 1 : -1
+            facing = dir > 0 ? .right : .left
+            let stepLen = min(config.walkSpeed * 1.8 * CGFloat(dt), abs(target - position.x))
+            var nx = position.x + dir * stepLen
+            walkDistance += stepLen
+            if !floor.contains(x: nx) {
+                if let next = terrain.floor(at: nx, y: floor.y) { motion = .grounded(next) }
+                else { nx = min(max(nx, floor.minX), floor.maxX) }
+            }
+            position.x = nx
+            running = true
+        } else {
+            facing = catalog.has(.stand, facing: toward) ? toward : .front
+        }
+        // 時間が来たら、ボールが止まるのを見届けて終わる（弾み続けても 10 秒で切り上げる）
+        if timeUp && (b.isResting || timeLeft < -10) { finishActivity() }
+    }
+
+    private func kickBall(_ b: Ball, range: ClosedRange<CGFloat>) {
+        // 広い方へ蹴ることが多い（壁際で蹴り続けないように）
+        let dir: CGFloat = Double.random(in: 0..<1, using: &rng) < 0.7
+            ? (position.x < (range.lowerBound + range.upperBound) / 2 ? 1 : -1)
+            : (Bool.random(using: &rng) ? 1 : -1)
+        b.kick(CGVector(dx: dir * CGFloat.random(in: 220...560, using: &rng), dy: CGFloat.random(in: 380...820, using: &rng)))
+        facing = dir > 0 ? .right : .left
+        kickCooldown = 0.8
+        kicks += 1
+        if Double.random(in: 0..<1, using: &rng) < 0.35 { showEmote(Bool.random(using: &rng) ? .joy : .heart, for: 1.2) }
     }
 
     /// 高さの違う隣の画面の床へ跳び移る（下なら飛び降り、上ならジャンプ）。隣がなければ false。
@@ -331,12 +415,14 @@ public final class MascotSimulation {
 
     private func finishActivity() {
         lastActivity = activity
+        // ボール遊びは（投げてもらって始めた場合も）終わったらしばらく休む
+        if activity == .playBall, let ps = planner.spec(.playBall) { planner.cooldownUntil[.playBall] = clock + ps.cooldown }
         if config.paused { setActivity(.idle, duration: 3); return }
         guard case .grounded(let f) = motion else { return }
         let onWindow: Bool = { if case .window = f.owner { return true } else { return false } }()
         let canCross = neighborSides(of: f).isEmpty == false
         let ctx = BehaviorContext(energy: energy, hour: hourProvider(), onWindow: onWindow,
-                                  canCrossScreen: canCross, last: lastActivity) { [catalog, config] s in
+                                  canCrossScreen: canCross, canPlayBall: config.allowBallPlay, last: lastActivity) { [catalog, config] s in
             config.allowPlaceholders || catalog.has(s.pose)
         }
         let (a, d) = planner.choose(in: ctx, now: clock, rng: &rng)
@@ -378,6 +464,10 @@ public final class MascotSimulation {
             targetX = toLeft ? f.minX + margin : f.maxX - margin
         case .turnAway:
             if catalog.has(.stand, facing: .back) { facing = .back }
+        case .playBall:
+            targetX = nil
+            kickCooldown = 0.6
+            showEmote(.joy, for: 1.5)
         case .idle, .sit, .sleep, .doze, .stretch, .joy:
             facing = .front
         default:
@@ -475,6 +565,7 @@ public final class MascotSimulation {
             case .stretch: pose = .stretch; emote = .stretch
             case .joy: pose = .joy; emote = .joy
             case .react: pose = reactionPose; emote = reactionEmote
+            case .playBall: pose = running ? .walk : .stand
             default: pose = .stand
             }
         }

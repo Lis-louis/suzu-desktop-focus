@@ -4,13 +4,17 @@ import SwiftUI
 import SuzuBridge
 import SuzuCore
 
-final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate, BallViewDelegate {
     private let settings = AppSettings()
     private let sensor = EnvironmentSensor()
     private var sprites: SpriteStore!
     private var sim: MascotSimulation!
     private var panel: MascotPanel!
     private var view: MascotView!
+    private var ballPanel: BallPanel!
+    /// 鈴が自分で出したボール（遊び終わったら自分で片付ける）
+    private var ballBySuzu = false
+    private var ballIdle: Double = 0
     private let bubble = SpeechBubble()
     private var statusItem: NSStatusItem!
     private let bridge: SecretaryBridge = DistributedNotificationBridge()
@@ -45,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         config.walkSpeed = 42 * settings.moveSpeed
         config.climbSpeed = 28 * settings.moveSpeed
         config.allowPlaceholders = settings.allowPlaceholders
+        config.allowBallPlay = settings.allowBallPlay
         sim = MascotSimulation(config: config, catalog: SpriteCatalog(manifest: sprites.manifest, allowMirroring: settings.allowMirroring))
 
         panel = MascotPanel(size: windowSize())
@@ -52,6 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         view.bodyHeight = settings.bodyHeight
         view.delegate = self
         panel.contentView = view
+        ballPanel = BallPanel()
+        ballPanel.view.delegate = self
         applyWindowAppearance()
         applyFrameRate()
 
@@ -69,6 +76,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         if settings.mascotRunning { startMascot() } else { status.running = false }
         if settings.showControlPanelOnLaunch || !settings.mascotRunning { openControlPanel() }
         setupUpdater()
+        // 開発用：環境変数 SUZU_DEBUG_BALL=1 で起動すると、すぐにボールを出す（動作確認用）
+        if ProcessInfo.processInfo.environment["SUZU_DEBUG_BALL"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.spawnBall(bySuzu: false) }
+        }
     }
 
     /// 自動更新：新しい版がダウンロードできたら、メニューに出して鈴の吹き出しで知らせる
@@ -111,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         settings.savedPosition = sim.position
         stopTimers()
         bubble.close()
+        hideBall()
         panel.orderOut(nil)
         settings.mascotRunning = false
         status.running = false
@@ -219,6 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         animationClock += dt
         sim.observeMouse(NSEvent.mouseLocation)
         sim.step(dt)
+        updateBall(dt)
         render()
         if now - lastSave > 30 { settings.savedPosition = sim.position; lastSave = now }
     }
@@ -242,6 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         origin.x = (origin.x * scale).rounded() / scale
         origin.y = (origin.y * scale).rounded() / scale
         if panel.frame.origin != origin { panel.setFrameOrigin(origin) }
+        renderBall()
         if bubble.isVisible { bubble.reposition(above: spriteRectOnScreen()) }
     }
 
@@ -249,11 +263,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         NSRect(x: panel.frame.midX - 30, y: panel.frame.minY, width: 60, height: settings.bodyHeight)
     }
 
+    // MARK: - ボール
+
+    private var ballRadius: CGFloat { settings.bodyHeight * 0.1 }
+
+    /// ボールを出す。鈴が自分で出すときは手元に、メニューから出すときは鈴の頭上から落とす。
+    private func spawnBall(bySuzu: Bool) {
+        guard sim.ball == nil, status.running else { return }
+        let side: CGFloat = sim.facing == .left ? -1 : 1
+        let p = sim.position, h = settings.bodyHeight
+        let start = bySuzu
+            ? CGPoint(x: p.x + side * sim.config.bodyWidth * 0.9, y: p.y + h * 0.45)
+            : CGPoint(x: p.x + side * sim.config.bodyWidth * 1.5, y: p.y + h * 1.4)
+        let ball = Ball(center: start, radius: ballRadius)
+        if bySuzu { ball.kick(CGVector(dx: side * 120, dy: 250)) }
+        sim.ball = ball
+        ballBySuzu = bySuzu
+        ballIdle = 0
+        ballPanel.render(ball)
+        ballPanel.show()
+        if !bySuzu { sim.noticeBall() }
+        setBallOut(true)
+    }
+
+    private func hideBall() {
+        sim.ball = nil
+        ballBySuzu = false
+        ballPanel.hide()
+        setBallOut(false)
+    }
+
+    @objc private func toggleBall() {
+        if sim.ball != nil { hideBall() } else { spawnBall(bySuzu: false) }
+    }
+
+    private func setBallOut(_ value: Bool) {
+        guard status.ballOut != value else { return }
+        status.ballOut = value
+        rebuildMenu()
+    }
+
+    /// 毎フレーム：鈴がボールを欲しがったら出し、自分で出したボールは遊び終わって少ししたら片付ける
+    private func updateBall(_ dt: Double) {
+        if sim.wantsBall { spawnBall(bySuzu: true) }
+        guard let b = sim.ball else { return }
+        if ballBySuzu && sim.activity != .playBall && !b.held {
+            ballIdle += dt
+            if ballIdle > 6 && b.isResting { hideBall() }
+        } else {
+            ballIdle = 0
+        }
+    }
+
+    private func renderBall() {
+        if let b = sim.ball, ballPanel.isVisible { ballPanel.render(b) }
+    }
+
+    // MARK: - BallViewDelegate
+
+    func ballGrabbed() { if let b = sim.ball { b.hold(at: b.position) } }
+    func ballMoved(to center: CGPoint) { sim.ball?.hold(at: center); renderBall() }
+    func ballThrown(velocity: CGVector) { sim.ball?.release(velocity: velocity); ballIdle = 0; sim.noticeBall() }
+    func ballTapped() {
+        guard let b = sim.ball else { return }
+        b.kick(CGVector(dx: (Double.random(in: 0..<1) - 0.5) * 300, dy: 550))
+        ballIdle = 0
+        sim.noticeBall()
+    }
+
     // MARK: - 設定・システム
 
     private func observeSettings() {
         settings.$scale.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.applyScale() } }.store(in: &cancellables)
         settings.$paused.dropFirst().sink { [weak self] v in self?.sim.config.paused = v; self?.rebuildMenu() }.store(in: &cancellables)
+        settings.$allowBallPlay.dropFirst().sink { [weak self] v in
+            guard let self else { return }
+            self.sim.config.allowBallPlay = v
+            if !v && self.ballBySuzu { self.hideBall() }
+        }.store(in: &cancellables)
         settings.$allowPlaceholders.dropFirst().sink { [weak self] v in self?.sim.config.allowPlaceholders = v }.store(in: &cancellables)
         settings.$allowMirroring.dropFirst().sink { [weak self] v in self?.sim.catalog.allowMirroring = v }.store(in: &cancellables)
         settings.$opacity.dropFirst().sink { [weak self] _ in DispatchQueue.main.async { self?.applyWindowAppearance() } }.store(in: &cancellables)
@@ -274,6 +361,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     private func applyWindowAppearance() {
         panel.alphaValue = CGFloat(settings.opacity)
         panel.level = settings.alwaysOnTop ? .floating : .normal
+        ballPanel.panel.alphaValue = CGFloat(settings.opacity)
+        ballPanel.panel.level = panel.level
     }
 
     private func applyScale() {
@@ -281,6 +370,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         sim.config.bodyHeight = h
         sim.config.bodyWidth = h * 0.38
         sensor.headroom = h + 20
+        sim.ball?.radius = ballRadius
         view.bodyHeight = h
         panel.setContentSize(windowSize())
         view.frame = NSRect(origin: .zero, size: windowSize())
@@ -406,6 +496,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         let m = NSMenu()
         m.addItem(withTitle: status.running ? L.pick("鈴を止める", "Stop Suzu") : L.pick("鈴を起動する", "Start Suzu"), action: #selector(toggleRunning), keyEquivalent: "").target = self
         m.addItem(withTitle: L.pick("鈴を呼ぶ", "Call Suzu"), action: #selector(summon), keyEquivalent: "").target = self
+        if status.running {
+            m.addItem(withTitle: status.ballOut ? L.pick("ボールをしまう", "Put the Ball Away") : L.pick("ボールで遊ぶ", "Play with a Ball"),
+                      action: #selector(toggleBall), keyEquivalent: "").target = self
+        }
         m.addItem(withTitle: L.pick("コントロールパネル", "Control Panel"), action: #selector(openControlPanel), keyEquivalent: "").target = self
         return m
     }
@@ -423,6 +517,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         m.addItem(.separator())
         let summonItem = m.addItem(withTitle: L.pick("鈴を呼ぶ", "Call Suzu"), action: #selector(summon), keyEquivalent: "")
         summonItem.target = self
+        if status.running {
+            m.addItem(withTitle: status.ballOut ? L.pick("ボールをしまう", "Put the Ball Away") : L.pick("ボールで遊ぶ", "Play with a Ball"),
+                      action: #selector(toggleBall), keyEquivalent: "").target = self
+        }
         let pause = m.addItem(withTitle: L.pick("自律行動を一時停止", "Pause Autonomous Behavior"), action: #selector(togglePause), keyEquivalent: "")
         pause.target = self
         pause.state = settings.paused ? .on : .off
@@ -487,6 +585,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
                 status: status, settings: settings, updater: updater,
                 onToggleRunning: { [weak self] in self?.toggleRunning() },
                 onSummon: { [weak self] in self?.summon() },
+                onToggleBall: { [weak self] in self?.toggleBall() },
                 onConversation: { [weak self] in self?.openConversation() },
                 onSettings: { [weak self] in self?.openSettings() },
                 onQuit: { NSApp.terminate(nil) })
