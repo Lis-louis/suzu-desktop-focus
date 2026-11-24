@@ -33,6 +33,7 @@
 ## インストール
 
 インストーラーは**このリポジトリの一番上のフォルダ**に置いてあります。お使いの OS のものをダウンロードしてください。
+0.2.0 以降の最新版は [Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases/latest) にあります（Windows は `SuzuSetup-<バージョン>-x64.exe`、macOS は `Suzu-<バージョン>.pkg`）。
 
 | OS | ファイル | ダウンロード |
 |---|---|---|
@@ -47,6 +48,14 @@
 > インストーラーはまだコード署名していないため、初回に OS の警告が出ることがあります。
 > macOS：.pkg が開けないときは **システム設定 → プライバシーとセキュリティ** で「このまま開く」をクリック。
 > Windows：SmartScreen が出たときは **詳細情報 → 実行** をクリック。
+
+### 自動アップデート（Windows 版 0.2.0 以降）
+
+Windows 版は、起動してから 10 秒後と、その後 3 時間ごとに新しいバージョンがないか確認し、裏でダウンロードします（設定 → **アプリ** の「アップデートを確認」で今すぐ確認することもできます）。
+準備ができると通知が出て、コントロールパネルと通知領域のメニューに **再起動して更新** が出ます。押すと画面なしで入れ替わって鈴が起動し直します。押さずにアプリを終了しても、終了するときに入れ替わります。設定はそのまま引き継がれます。
+
+0.1.0 には自動アップデートがないため、0.1.0 を使っている場合は一度だけ手動で新しいインストーラーを入れ直してください。
+macOS 版の自動アップデートは準備中です。それまでは Releases から新しい `.pkg` を入れ直してください。
 
 ## 動作環境
 
@@ -135,12 +144,14 @@ dotnet run --project windows\Suzu          # 起動
 
 Windows の `.exe` は Mac では作れません（逆も同じ）。それぞれの OS で作ってください。
 
-**新しい版を配布するとき**は、作ったインストーラーをリポジトリの一番上にコピーし、古いものと入れ替えてコミットしてください。
-コードを変えても、一番上のインストーラーは自動では更新されません。
 バージョン番号は `VERSION` ファイルで管理しています。
 
-GitHub に push すると、[Installers](.github/workflows/installers.yml) ワークフローも GitHub の macOS・Windows マシンで両方のインストーラーを作り、Artifacts に置きます（ビルドの確認用）。
-`v0.1.0` のようなタグを push すると、下書きのリリースにも添付されます。
+GitHub に push すると、[Installers](.github/workflows/installers.yml) ワークフローが GitHub の macOS・Windows マシンで両方のインストーラーを作り、Artifacts に置きます（ビルドの確認用）。
+
+**新しい版を配布するとき**は、`VERSION` を上げて（例：`0.2.0` → `0.3.0`）main に push してください。ワークフローがテスト → 両方のインストーラーの作成 →
+[Releases](https://github.com/Lis-louis/suzu-desktop-focus/releases) にタグ `v<バージョン>` で公開まで行い、インストール済みの鈴（Windows 版）が自動でアップデートします。
+`VERSION` を上げていない push では Release は作りません。途中で失敗したときは Actions →「Installers」→ **Run workflow** で、足りないファイルを上げ直して公開します。
+一番上のフォルダのインストーラー（0.1.0）は自動では更新されません。
 
 macOS のパッケージを署名・公証する場合は `APP_SIGN_IDENTITY`・`PKG_SIGN_IDENTITY`・`NOTARY_PROFILE` を設定してください（`scripts/build_pkg.sh` の先頭のコメント参照）。
 

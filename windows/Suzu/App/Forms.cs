@@ -130,13 +130,18 @@ internal sealed class ControlPanelForm : SuzuForm
     private readonly CheckBox _showOnLaunch = MakeCheck();
     private readonly Label _bridge = MakeLabel(8.5f);
     private readonly Button _quit = new() { AutoSize = true, ForeColor = Color.FromArgb(200, 40, 40) };
+    private readonly Updater _updater;
+    private readonly UpdateBanner _updateBanner;
     private bool _updating;
 
-    public ControlPanelForm(AppSettings settings, MascotStatus status,
-                            Action onToggleRunning, Action onSummon, Action onConversation, Action onSettings, Action onQuit)
+    public ControlPanelForm(AppSettings settings, MascotStatus status, Updater updater,
+                            Action onToggleRunning, Action onSummon, Action onConversation, Action onSettings, Action onQuit,
+                            Action onInstallUpdate)
     {
         _settings = settings;
         _status = status;
+        _updater = updater;
+        _updateBanner = new UpdateBanner(settings, updater, onInstallUpdate);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         AutoSize = true;
@@ -166,7 +171,7 @@ internal sealed class ControlPanelForm : SuzuForm
         footer.Controls.Add(_quit, 1, 0);
 
         var scaleRow = new ScaleRow(settings, 200);
-        col.Controls.AddRange(new Control[] {header, _now, _toggle, buttons, Divider(), scaleRow, _pause, _login, _showOnLaunch, Divider(), footer});
+        col.Controls.AddRange(new Control[] {header, _updateBanner, _now, _toggle, buttons, Divider(), scaleRow, _pause, _login, _showOnLaunch, Divider(), footer});
         Controls.Add(col);
 
         _toggle.Click += (_, _) => onToggleRunning();
@@ -181,10 +186,19 @@ internal sealed class ControlPanelForm : SuzuForm
 
         _status.Changed += UpdateTexts;
         _settings.Changed += OnSettingsChanged;
+        _updater.Changed += OnUpdateChanged;
         UpdateTexts();
     }
 
     private void OnSettingsChanged(string _) { if (!IsDisposed) UpdateTexts(); }
+
+    private void OnUpdateChanged()
+    {
+        if (IsDisposed) return;
+        SuspendLayout();
+        _updateBanner.UpdateTexts();
+        ResumeLayout(true);
+    }
 
     /// <summary>状態・言語を画面に反映する</summary>
     public void UpdateTexts()
@@ -216,6 +230,7 @@ internal sealed class ControlPanelForm : SuzuForm
         _showOnLaunch.Checked = _settings.ShowControlPanelOnLaunch;
         _bridge.Text = _status.BridgeConnected ? L.Pick("鈴秘書：接続中", "Suzu Secretary: connected") : L.Pick("鈴秘書：未接続", "Suzu Secretary: not connected");
         _quit.Text = L.Pick("アプリを終了", "Quit app");
+        _updateBanner.UpdateTexts();
         ResumeLayout(true);
         _updating = false;
     }
@@ -229,8 +244,50 @@ internal sealed class ControlPanelForm : SuzuForm
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _status.Changed -= UpdateTexts; _settings.Changed -= OnSettingsChanged; }
+        if (disposing) { _status.Changed -= UpdateTexts; _settings.Changed -= OnSettingsChanged; _updater.Changed -= OnUpdateChanged; }
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>コントロールパネル上部の「新しいバージョン」のお知らせ（何もなければ隠れる）</summary>
+internal sealed class UpdateBanner : TableLayoutPanel
+{
+    private readonly AppSettings _settings;
+    private readonly Updater _updater;
+    private readonly Label _text = new() { AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = Theme.Navy, Margin = new Padding(0, 0, 8, 0) };
+    private readonly Button _action = new() { AutoSize = true, Anchor = AnchorStyles.Right, Margin = Padding.Empty };
+
+    public UpdateBanner(AppSettings settings, Updater updater, Action onInstall)
+    {
+        _settings = settings;
+        _updater = updater;
+        AutoSize = true;
+        ColumnCount = 2;
+        Dock = DockStyle.Fill;
+        BackColor = Theme.SuzuBubble;
+        Padding = new Padding(10, 8, 10, 8);
+        Margin = new Padding(0, 10, 0, 0);
+        ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _text.MaximumSize = new Size(240, 0);
+        Controls.Add(_text, 0, 0);
+        Controls.Add(_action, 1, 0);
+        _action.Click += (_, _) =>
+        {
+            if (_updater.State == UpdateState.Ready) onInstall();
+            else if (_updater.State == UpdateState.Available) _updater.OpenReleasePage();
+        };
+        UpdateTexts();
+    }
+
+    public void UpdateTexts()
+    {
+        var L = _settings.Language;
+        var st = _updater.State;
+        Visible = st is UpdateState.Downloading or UpdateState.Ready or UpdateState.Available;
+        _text.Text = _updater.Describe(L);
+        _action.Visible = st is UpdateState.Ready or UpdateState.Available;
+        _action.Text = st == UpdateState.Ready ? L.Pick("再起動して更新", "Restart to update") : L.Pick("ダウンロード…", "Download…");
     }
 }
 
@@ -267,12 +324,18 @@ internal sealed class SettingsForm : SuzuForm
     private readonly CheckBox _login = MakeCheck();
     private readonly Label _missingHeader = MakeLabel(9.5f, FontStyle.Bold, Theme.Navy);
     private readonly TextBox _missing = new() { ReadOnly = true, Multiline = true, BorderStyle = BorderStyle.None, BackColor = Color.White, Width = 420, Height = 48, ForeColor = Color.Gray };
+    private readonly Label _appHeader = MakeLabel(9.5f, FontStyle.Bold, Theme.Navy);
+    private readonly Label _version = MakeLabel();
+    private readonly Label _updateState = MakeLabel(8.5f);
+    private readonly Button _updateButton = new() { AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
+    private readonly Updater _updater;
     private bool _updating;
 
-    public SettingsForm(AppSettings settings, MascotStatus status, List<string> missingAssets)
+    public SettingsForm(AppSettings settings, MascotStatus status, Updater updater, List<string> missingAssets, Action onInstallUpdate)
     {
         _settings = settings;
         _status = status;
+        _updater = updater;
         _missingAssets = missingAssets;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -300,6 +363,7 @@ internal sealed class SettingsForm : SuzuForm
             _behaviorHeader, _interact, _pause, speedRow, Divider(),
             _tempHeader, _mirror, _placeholders, _tempNote, Divider(),
             _startupHeader, _login, Divider(),
+            _appHeader, _version, _updateState, _updateButton, Divider(),
             _reset,
         });
         if (_missingAssets.Count > 0) col.Controls.AddRange(new Control[] {Divider(), _missingHeader, _missing});
@@ -320,9 +384,48 @@ internal sealed class SettingsForm : SuzuForm
         _mirror.CheckedChanged += (_, _) => { if (!_updating) _settings.AllowMirroring = _mirror.Checked; };
         _placeholders.CheckedChanged += (_, _) => { if (!_updating) _settings.AllowPlaceholders = _placeholders.Checked; };
         _login.CheckedChanged += (_, _) => { if (!_updating) _settings.LaunchAtLogin = _login.Checked; };
+        _updateState.MaximumSize = new Size(420, 0);
+        _updateButton.Click += (_, _) =>
+        {
+            switch (_updater.State)
+            {
+                case UpdateState.Ready: onInstallUpdate(); break;
+                case UpdateState.Available: _updater.OpenReleasePage(); break;
+                default: _updater.Check(manual: true); break;
+            }
+        };
 
         _settings.Changed += OnSettingsChanged;
+        _updater.Changed += OnUpdateChanged;
         UpdateTexts();
+    }
+
+    private void OnUpdateChanged()
+    {
+        if (IsDisposed) return;
+        SuspendLayout();
+        UpdateAppSection();
+        ResumeLayout(true);
+    }
+
+    /// <summary>「アプリ」の欄（バージョン・アップデート）</summary>
+    private void UpdateAppSection()
+    {
+        var L = _settings.Language;
+        var st = _updater.State;
+        _appHeader.Text = L.Pick("アプリ", "App");
+        _version.Text = L.Pick($"バージョン {_updater.Current}", $"Version {_updater.Current}");
+        var note = _updater.Describe(L);
+        if (note.Length == 0)
+            note = L.Pick("新しいバージョンは自動で確認し、ダウンロードします。", "New versions are checked for and downloaded automatically.");
+        _updateState.Text = note;
+        _updateButton.Text = st switch
+        {
+            UpdateState.Ready => L.Pick("再起動して更新", "Restart to update"),
+            UpdateState.Available => L.Pick("ダウンロードページを開く", "Open download page"),
+            _ => L.Pick("アップデートを確認", "Check for updates"),
+        };
+        _updateButton.Enabled = st is not (UpdateState.Checking or UpdateState.Downloading);
     }
 
     private static FlowLayoutPanel SliderRow(Label label, TrackBar track, Label value)
@@ -406,6 +509,7 @@ internal sealed class SettingsForm : SuzuForm
         _login.Checked = _settings.LaunchAtLogin;
         _missingHeader.Text = L.Pick("不足している画像素材", "Missing image assets") + $" ({_missingAssets.Count})";
         _missing.Text = string.Join(L.Pick("、", ", "), _missingAssets);
+        UpdateAppSection();
         ResumeLayout(true);
         _updating = false;
     }
@@ -418,7 +522,7 @@ internal sealed class SettingsForm : SuzuForm
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _settings.Changed -= OnSettingsChanged; _status.Changed -= OnStatusChanged; }
+        if (disposing) { _settings.Changed -= OnSettingsChanged; _status.Changed -= OnStatusChanged; _updater.Changed -= OnUpdateChanged; }
         base.Dispose(disposing);
     }
 }

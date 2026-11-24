@@ -2,13 +2,17 @@
 ;
 ; 通常は windows\build.ps1 から実行する（exe の作成 → 使用許諾の文書の用意 → このスクリプトのコンパイル）。
 ; 手動で実行する場合:
-;   iscc /DAppVersion=0.1.0 /DPublishDir=..\..\build\windows\publish /DLicenseDir=..\..\build\windows\license windows\installer\Suzu.iss
+;   iscc /DAppVersion=0.2.0 /DPublishDir=..\..\build\windows\publish /DLicenseDir=..\..\build\windows\license windows\installer\Suzu.iss
 ;
 ; ウィザードの流れ: 言語の選択 → ようこそ → 使用許諾（MIT ＋ キャラクター利用ガイドライン）
 ;                   → インストール先 → 追加のタスク（デスクトップアイコン・自動起動）→ 確認 → インストール → 完了（鈴を起動）
+;
+; アプリの自動更新（windows/Suzu/App/Updater.cs）は、このウィザードを画面なしで動かして入れ替える:
+;   SuzuSetup-<version>-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CLOSEAPPLICATIONS [/RELAUNCH=1]
+; 前回のインストール先・言語・タスクはそのまま引き継がれる。/RELAUNCH=1 のときは終わったら鈴を起動し直す。
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.2.0"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\..\build\windows\publish"
@@ -104,12 +108,19 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; 自動更新の「再起動して更新」：画面なしで入れ替えたあと、鈴を起動し直す
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: ShouldRelaunch
 
 [UninstallRun]
 ; 起動中の鈴を終了してからファイルを削除する
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM {#AppExe} /F"; Flags: runhidden; RunOnceId: "StopSuzu"
 
 [Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
