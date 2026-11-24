@@ -129,6 +129,24 @@ jobs:
           tag="v$V"
           files=("dist/SuzuSetup-$V-x64.exe" "dist/Suzu-$V.pkg" "dist/Suzu-$V-win-x64-portable.zip")
           ls -la "${files[@]}"
+          # アプリが新しい版を知るための latest.json（GitHub API と同じ形。API の回数制限を受けずに読める）
+          python3 - "$tag" "${files[@]}" > dist/latest.json <<'PY'
+          import hashlib, json, os, sys
+          tag, files = sys.argv[1], sys.argv[2:]
+          repo = os.environ["GH_REPO"]
+          base = f"https://github.com/{repo}/releases/download/{tag}/"
+          def sha(p):
+              h = hashlib.sha256()
+              with open(p, "rb") as f:
+                  for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
+              return h.hexdigest()
+          assets = [{"name": os.path.basename(p), "state": "uploaded", "size": os.path.getsize(p),
+                     "browser_download_url": base + os.path.basename(p), "digest": "sha256:" + sha(p)} for p in files]
+          print(json.dumps({"tag_name": tag, "html_url": f"https://github.com/{repo}/releases/tag/{tag}",
+                            "draft": False, "prerelease": False, "assets": assets}, indent=2))
+          PY
+          cat dist/latest.json
+          files+=("dist/latest.json")
           # 下書きのうちにファイルを揃えてから公開する（公開した瞬間にアプリが更新を始めるため）
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" --draft --target "$GITHUB_SHA" --title "鈴 Suzu $V" --generate-notes

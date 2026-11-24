@@ -35,6 +35,11 @@ internal sealed class Updater : IDisposable
 {
     private const string Repo = "Lis-louis/suzu-desktop-focus";
     private const string LatestApi = $"https://api.github.com/repos/{Repo}/releases/latest";
+    /// <summary>
+    /// 最新の Release に添付した latest.json（GitHub API と同じ形）。API は 1 時間に 60 回（同じネットワーク全体で）までなので、
+    /// 学校などで多くの人が使うと足りなくなる。ファイルのダウンロードはその制限を受けないので、こちらを先に読む。
+    /// </summary>
+    private const string LatestJson = $"https://github.com/{Repo}/releases/latest/download/latest.json";
     public const string ReleasesPage = $"https://github.com/{Repo}/releases/latest";
     private static readonly TimeSpan FirstCheckDelay = TimeSpan.FromSeconds(10); // 起動直後は鈴の表示を優先する
     private static readonly TimeSpan CheckInterval = TimeSpan.FromHours(3);      // 起動しっぱなしでも 3 時間ごとに確認
@@ -46,6 +51,8 @@ internal sealed class Updater : IDisposable
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Suzu", "Updates");
     private bool _busy;
     private bool _installStarted;
+    /// <summary>動かしたインストーラーのプロセス番号（Install のあと）</summary>
+    public int InstallerProcessId { get; private set; }
 
     public AppVersion Current { get; }
     public UpdateState State { get; private set; } = UpdateState.Idle;
@@ -143,6 +150,15 @@ internal sealed class Updater : IDisposable
 
     private async Task<ReleaseInfo?> FetchLatest()
     {
+        try
+        {
+            using var jsonRes = await _http.GetAsync(LatestJson);
+            if (jsonRes.IsSuccessStatusCode)
+                return ReleaseInfo.FromGitHubJson(await jsonRes.Content.ReadAsStringAsync(), IsWindowsInstaller);
+        }
+        catch (HttpRequestException) { }
+        catch (System.Text.Json.JsonException) { }
+        // latest.json のない古い Release のときは API で調べる
         using var req = new HttpRequestMessage(HttpMethod.Get, LatestApi);
         req.Headers.Accept.ParseAdd("application/vnd.github+json");
         using var res = await _http.SendAsync(req);
@@ -235,7 +251,8 @@ internal sealed class Updater : IDisposable
         var args = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CLOSEAPPLICATIONS" + (relaunch ? " /RELAUNCH=1" : "");
         try
         {
-            Process.Start(new ProcessStartInfo(_installerPath, args) { UseShellExecute = true });
+            using var p = Process.Start(new ProcessStartInfo(_installerPath, args) { UseShellExecute = true });
+            InstallerProcessId = p?.Id ?? 0;
             _installStarted = true;
             return true;
         }

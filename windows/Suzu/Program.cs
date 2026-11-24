@@ -11,6 +11,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // 自動更新の入れ替え中に「更新しています」と表示しておく複製（二重起動の確認より前に分ける）
+        if (args.Length > 0 && args[0] == UpdateSplash.Arg) return UpdateSplash.Run(args);
+
         using var mutex = new Mutex(true, MutexName, out bool createdNew);
         if (!createdNew)
         {

@@ -54,7 +54,7 @@ To uninstall: on macOS, quit Suzu and move it from Applications to the Trash. On
 
 Suzu checks for a new version 10 seconds after it starts and every 3 hours after that, and downloads it in the background (you can also check right away with **Check for updates** under Settings → **App**). Your settings are kept.
 
-- **Windows** (0.4.0 and later): when the update is ready, Suzu says she's updating the app, and 10 seconds later it is installed and Suzu restarts automatically. If you turn off **Install new versions automatically** under Settings → **App**, the update is installed only when you click **Restart to update** in the Control Panel or the tray menu (or when you quit the app)
+- **Windows** (0.4.0 and later): when the update is ready, Suzu counts down from 10 seconds, then the update is installed and Suzu restarts automatically. While it installs, Suzu stays where she was with an "Updating…" bubble (0.5.1 and later). If you turn off **Install new versions automatically** under Settings → **App**, the update is installed only when you click **Restart to update** in the Control Panel or the tray menu (or when you quit the app)
 - **macOS**: when the update is ready, Suzu tells you in a speech bubble and **Install Update** shows up in the Control Panel and the menu bar menu. Click it to open the installer and follow the steps (an administrator password is needed). Suzu restarts when the installation finishes
 
 If you are on a version without automatic updates (Windows 0.1.0, macOS 0.2.0 or earlier), install the new version manually once.

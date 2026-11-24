@@ -615,3 +615,17 @@ public class BallTests
         Assert.Equal(0, p.Weight(spec, off, 0));
     }
 }
+
+public class BallSpinTests
+{
+    [Fact]
+    public void RollingRightSpinsClockwise()
+    {
+        var t = Terrain.Build([new ScreenInfo(1, new RectD(0, 80, 1600, 900))], [], 200);
+        var b = new Ball(new PointD(500, 98), 18);
+        b.Step(1.0 / 60, t, 2200);
+        b.Kick(new PointD(300, 0));
+        for (int i = 0; i < 30; i++) b.Step(1.0 / 60, t, 2200);
+        Assert.True(b.Angle > 0);
+    }
+}

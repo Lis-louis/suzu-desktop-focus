@@ -14,7 +14,7 @@ public sealed class Ball
     public double Radius { get; set; }
     public PointD Position { get; private set; }
     public PointD Velocity { get; private set; }
-    /// <summary>転がった分の回転（ラジアン）。描画用。</summary>
+    /// <summary>転がった分の回転（ラジアン・時計回りが正）。描画用。</summary>
     public double Angle { get; private set; }
     /// <summary>床の上にいる（弾んでいない）</summary>
     public bool OnFloor { get; private set; }
@@ -86,7 +86,8 @@ public sealed class Ball
         }
 
         BounceOffScreenEdges(terrain);
-        Angle -= (Position.X - prev.X) / Math.Max(1, r);
+        // 右へ転がると時計回り（画面座標の回転は時計回りが正）
+        Angle += (Position.X - prev.X) / Math.Max(1, r);
         if (terrain.Floors.Count > 0 && Position.Y < terrain.Floors.Min(f => f.Y) - 400 * s) Rescue(terrain);
     }
 

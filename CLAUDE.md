@@ -32,8 +32,16 @@
   `GET https://api.github.com/repos/Lis-louis/suzu-desktop-focus/releases/latest` を見て、
   `SuzuSetup-*-x64.exe` を `%LOCALAPPDATA%\Suzu\Updates` にダウンロード（大きさと、GitHub の `digest` の SHA-256 を確認）。
 - **0.4.0 から自動で入れ替える**（アプリは開きっぱなしで使われるため）。ダウンロードが終わると鈴が吹き出しで
-  「アプリを更新しますね。少しのあいだだけ消えます！」と知らせ（鈴を止めているときは通知バルーン）、10 秒後に
+  「新しいバージョンが届きました！あと N 秒でアプリを更新して、すぐ戻ってきますね」と 10 秒の秒読みをし（鈴を止めているときは通知バルーン）、
   `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /CLOSEAPPLICATIONS /RELAUNCH=1` でインストーラーを動かして終了する（`AppController.ScheduleAutoInstall`）。
+- **入れ替え中も鈴を出しておく（0.5.1〜）**：`windows/Suzu/App/UpdateSplash.cs`。終了する直前に自分の exe と Sprites を
+  `%LOCALAPPDATA%\Suzu\Splash` に複製して `--update-splash` で起動し、同じ場所に正面の鈴と「更新しています…すぐ戻りますね！」の吹き出しを出す。
+  新しい鈴（二重起動防止の Mutex）が現れたら消える。入れ替えが終わって 15 秒たっても来なければ、インストール先の鈴を起動し直す。
+  複製は次に起動した鈴が片付ける。
+- **新しい版の調べ方（0.5.1〜）**：まず最新の Release に添付した `latest.json`
+  （`releases/latest/download/latest.json`。GitHub API と同じ形でワークフローが作る）を読み、無ければ API（`releases/latest`）を使う。
+  **認証なしの API は同じネットワーク全体で 1 時間 60 回まで**で、使い切ると更新を見つけられない（学校のネットワークなどで起こりうる。
+  開発中に curl で何度も API を叩いても同じことになる）。Mac 版も同じ方法に変えるとよい。
 - 起動し直すときはインストーラーが `--updated` を付けるので、鈴が「バージョン X になりました！」と言う（コントロールパネルは出さない）。
 - 設定「新しいバージョンを自動で入れる」（`AutoInstallUpdates`・既定オン）をオフにしたとき、または Program Files に
   入れていて管理者の確認（UAC）が要るときは自動では入れ替えず、通知 → コントロールパネル上部の `UpdateBanner`・

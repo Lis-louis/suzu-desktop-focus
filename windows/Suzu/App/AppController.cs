@@ -26,8 +26,10 @@ internal sealed class AppController : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu = new();
     private readonly Updater _updater;
-    /// <summary>自動更新の予告から入れ替えまでの待ち時間</summary>
-    private readonly System.Windows.Forms.Timer _autoInstallTimer = new() { Interval = 10_000 };
+    /// <summary>自動更新の予告から入れ替えまでの秒読み（1 秒ごと）</summary>
+    private readonly System.Windows.Forms.Timer _autoInstallTimer = new() { Interval = 1000 };
+    private int _autoInstallCountdown;
+    private const int AutoInstallSeconds = 10;
 
     private readonly FrameClock _frameClock;
     private int _framesSinceMeasure;
@@ -110,11 +112,7 @@ internal sealed class AppController : ApplicationContext
 
         _updater = new Updater();
         _updater.BecameReady += OnUpdateReady;
-        _autoInstallTimer.Tick += (_, _) =>
-        {
-            _autoInstallTimer.Stop();
-            if (_settings.AutoInstallUpdates && _updater.State == UpdateState.Ready) InstallUpdate();
-        };
+        _autoInstallTimer.Tick += (_, _) => AutoInstallTick();
         _updater.Start();
 
         _frameClock = new FrameClock(Tick);
@@ -130,6 +128,8 @@ internal sealed class AppController : ApplicationContext
         // サインイン時の自動起動・自動更新のあとの起動では、止めてある場合だけパネルを出す
         if ((!autostart && !updated && _settings.ShowControlPanelOnLaunch) || !_settings.MascotRunning) OpenControlPanel();
         if (updated) AnnounceUpdated();
+        // 前回の更新で使った「更新しています」の複製を片付ける（まだ終わりきっていないことがあるので少し待つ）
+        Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => UpdateSplash.CleanUp());
         // 開発用：環境変数 SUZU_DEBUG_BALL=1 で起動すると、すぐにボールを出す（動作確認用）
         if (Environment.GetEnvironmentVariable("SUZU_DEBUG_BALL") == "1")
         {
@@ -156,23 +156,41 @@ internal sealed class AppController : ApplicationContext
             ToolTipIcon.Info);
     }
 
-    /// <summary>鈴が「更新します」と知らせてから、10 秒後に入れ替えて起動し直す</summary>
+    /// <summary>鈴が「更新します」と秒読みしてから、入れ替えて起動し直す</summary>
     private void ScheduleAutoInstall()
     {
         if (_autoInstallTimer.Enabled) return;
-        var v = _updater.Release?.Version;
-        var text = L.Pick($"新しいバージョン（{v}）が届いたので、アプリを更新しますね。少しのあいだだけ消えます！",
-                          $"Version {v} has arrived, so I'm updating the app. I'll be gone for just a moment!");
-        if (_status.Running)
-        {
-            _sim.React(Pose.Joy, Emote.Joy, 3);
-            ShowBubble(text, 10);
-        }
+        _autoInstallCountdown = AutoInstallSeconds;
+        if (_status.Running) _sim.React(Pose.Joy, Emote.Joy, 3);
         else
         {
-            _tray.ShowBalloonTip(8000, L.Pick("鈴", "Suzu"), text, ToolTipIcon.Info);
+            var v = _updater.Release?.Version;
+            _tray.ShowBalloonTip(8000, L.Pick("鈴", "Suzu"),
+                L.Pick($"新しいバージョン（{v}）が届いたので、{AutoInstallSeconds} 秒後にアプリを更新します。",
+                       $"Version {v} has arrived. The app will update in {AutoInstallSeconds} seconds."),
+                ToolTipIcon.Info);
         }
+        ShowCountdown();
         _autoInstallTimer.Start();
+    }
+
+    private void AutoInstallTick()
+    {
+        if (!_settings.AutoInstallUpdates || _updater.State != UpdateState.Ready) { _autoInstallTimer.Stop(); _bubble.Dismiss(); return; }
+        _autoInstallCountdown--;
+        if (_autoInstallCountdown > 0) { ShowCountdown(); return; }
+        _autoInstallTimer.Stop();
+        InstallUpdate();
+    }
+
+    /// <summary>「あと N 秒で更新します」の吹き出し（鈴が止まっているときは出さない）</summary>
+    private void ShowCountdown()
+    {
+        if (!_status.Running) return;
+        var v = _updater.Release?.Version;
+        int n = _autoInstallCountdown;
+        ShowBubble(L.Pick($"新しいバージョン（{v}）が届きました！\nあと {n} 秒でアプリを更新して、すぐ戻ってきますね。",
+                          $"Version {v} is here!\nI'll update the app in {n} seconds and be right back."), 2);
     }
 
     /// <summary>自動更新で入れ替わったあと、少し待ってから知らせる</summary>
@@ -696,10 +714,39 @@ internal sealed class AppController : ApplicationContext
         f.BringToFront();
     }
 
-    /// <summary>「再起動して更新」：画面なしで新しい版に入れ替え、終わったら鈴を起動し直す</summary>
+    /// <summary>
+    /// 「再起動して更新」：画面なしで新しい版に入れ替え、終わったら鈴を起動し直す。
+    /// 入れ替えの間は、鈴の複製が同じ場所で「更新しています…」と表示しておく（急に消えたように見えないように）。
+    /// </summary>
     private void InstallUpdate()
     {
-        if (_updater.Install(relaunch: true)) Quit();
+        if (_updater.State != UpdateState.Ready) return;
+        System.Diagnostics.Process? splash = null;
+        if (_status.Running && _updater.Release is { } r && UpdateSplash.Launch(_sim.Position, BodyPx, _dpi, r.Version))
+            splash = FindSplash();
+        if (_updater.Install(relaunch: true))
+        {
+            UpdateSplash.NotifyInstallerStarted(_updater.InstallerProcessId);
+            Quit();
+        }
+        else
+        {
+            // UAC で断られたなど：複製は片付けて、このまま続ける
+            try { splash?.Kill(); } catch (Exception) { }
+            ShowBubble(L.Pick("更新できませんでした。また今度にしますね。", "Couldn't update. I'll try again later."), 5);
+        }
+    }
+
+    private static System.Diagnostics.Process? FindSplash()
+    {
+        var exe = Path.Combine(UpdateSplash.Directory, "Suzu.exe");
+        foreach (var p in System.Diagnostics.Process.GetProcessesByName("Suzu"))
+        {
+            try { if (string.Equals(p.MainModule?.FileName, exe, StringComparison.OrdinalIgnoreCase)) return p; }
+            catch (Exception) { }
+            p.Dispose();
+        }
+        return null;
     }
 
     private void Quit()
