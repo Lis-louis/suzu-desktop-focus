@@ -19,6 +19,7 @@ final class MascotStatus: ObservableObject {
 struct ControlPanelView: View {
     @ObservedObject var status: MascotStatus
     @ObservedObject var settings: AppSettings
+    @ObservedObject var updater: Updater
     var onToggleRunning: () -> Void
     var onSummon: () -> Void
     var onConversation: () -> Void
@@ -42,6 +43,10 @@ struct ControlPanelView: View {
                     }
                 }
                 Spacer()
+            }
+
+            if updater.state == .downloading || updater.state == .ready {
+                UpdateBanner(updater: updater, settings: settings)
             }
 
             if status.running && !status.activityText.isEmpty {
@@ -81,5 +86,25 @@ struct ControlPanelView: View {
         }
         .padding(20)
         .frame(width: 360)
+    }
+}
+
+/// コントロールパネル上部の「新しいバージョン」のお知らせ
+struct UpdateBanner: View {
+    @ObservedObject var updater: Updater
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        let L = settings.language
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color(red: 0.49, green: 0.58, blue: 0.85))
+            Text(updater.describe(L)).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if updater.state == .ready {
+                Button(L.pick("インストール…", "Install…")) { updater.install() }
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(red: 0.86, green: 0.90, blue: 1.0).opacity(0.6)))
     }
 }
