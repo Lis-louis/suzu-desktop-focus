@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     private var conversationWindow: NSWindow?
     private var controlWindow: NSWindow?
     private let status = MascotStatus()
+    private let updater = Updater()
 
     // MARK: - 起動・終了
 
@@ -67,7 +68,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
 
         if settings.mascotRunning { startMascot() } else { status.running = false }
         if settings.showControlPanelOnLaunch || !settings.mascotRunning { openControlPanel() }
+        setupUpdater()
     }
+
+    /// 自動更新：新しい版がダウンロードできたら、メニューに出して鈴の吹き出しで知らせる
+    private func setupUpdater() {
+        updater.$state.removeDuplicates().dropFirst().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.rebuildMenu() }
+        }.store(in: &cancellables)
+        updater.onReady = { [weak self] in
+            guard let self, self.status.running, let v = self.updater.release?.version else { return }
+            self.bubble.show(self.L.pick("新しいバージョン \(v) が届きました。メニューの「アップデートをインストール」から入れ替えられます。",
+                                         "Version \(v) has arrived. Choose \"Install Update\" from the menu."),
+                             above: self.spriteRectOnScreen(), seconds: 8)
+        }
+        updater.start()
+    }
+
+    @objc private func installUpdate() { updater.install() }
 
     /// Finder や Dock からもう一度開かれたらコントロールパネルを出す
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -354,6 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: L.pick("コントロールパネル", "Control Panel"), action: #selector(openControlPanel), keyEquivalent: "1").target = self
         appMenu.addItem(withTitle: L.pick("設定…", "Settings…"), action: #selector(openSettings), keyEquivalent: ",").target = self
+        appMenu.addItem(withTitle: L.pick("アップデートを確認…", "Check for Updates…"), action: #selector(checkForUpdates), keyEquivalent: "").target = self
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: L.pick("ウインドウを隠す", "Hide Windows"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
@@ -395,6 +414,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
 
     private func makeMenu() -> NSMenu {
         let m = NSMenu()
+        if updater.state == .ready, let v = updater.release?.version {
+            m.addItem(withTitle: L.pick("アップデートをインストール（\(v)）…", "Install Update (\(v))…"), action: #selector(installUpdate), keyEquivalent: "").target = self
+            m.addItem(.separator())
+        }
         m.addItem(withTitle: status.running ? L.pick("鈴を止める", "Stop Suzu") : L.pick("鈴を起動する", "Start Suzu"), action: #selector(toggleRunning), keyEquivalent: "").target = self
         m.addItem(withTitle: L.pick("コントロールパネル…", "Control Panel…"), action: #selector(openControlPanel), keyEquivalent: "").target = self
         m.addItem(.separator())
@@ -461,7 +484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     @objc private func openControlPanel() {
         if controlWindow == nil {
             let view = ControlPanelView(
-                status: status, settings: settings,
+                status: status, settings: settings, updater: updater,
                 onToggleRunning: { [weak self] in self?.toggleRunning() },
                 onSummon: { [weak self] in self?.summon() },
                 onConversation: { [weak self] in self?.openConversation() },
@@ -482,7 +505,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
     @objc private func openSettings() {
         if settingsWindow == nil {
             let missing = sim.catalog.missingPoses().map { "\($0.0.rawValue)/\($0.1.rawValue)" }
-            let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, status: status, missingAssets: missing)))
+            let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, status: status, updater: updater, missingAssets: missing)))
             w.title = L.pick("鈴の設定", "Suzu Settings")
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
@@ -509,6 +532,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MascotViewDelegate {
             if let s = panel.screen { w.setFrame(w.frame.intersection(s.visibleFrame).isEmpty ? w.frame : w.constrainFrameRect(w.frame, to: s), display: false) }
         }
         conversationWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// 手動で確認する（結果は設定画面の「アプリ」に出る）
+    @objc private func checkForUpdates() {
+        openSettings()
+        updater.check(manual: true)
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

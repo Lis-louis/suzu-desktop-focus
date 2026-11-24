@@ -9,7 +9,7 @@ name: Installers
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, mac-updater]  # mac-updater は Mac 版の自動更新の作業用（終わったら外す）
   pull_request:
 
 permissions:
@@ -86,7 +86,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Test
-        run: swift test
+        # エラーを Actions の画面（Annotations）にも出す
+        run: |
+          set -o pipefail
+          if ! swift test 2>&1 | tee test.log; then
+            grep -E "error:|failed" test.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          fi
 
       - name: Build installer
         run: scripts/build_pkg.sh

@@ -313,3 +313,64 @@ final class BridgeTests: XCTestCase {
         XCTAssertNil(DistributedNotificationBridge.decode("not json"))
     }
 }
+
+final class ReleaseTests: XCTestCase {
+    func testParsesVersions() {
+        XCTAssertEqual(AppVersion("0.1.0"), AppVersion(0, 1, 0))
+        XCTAssertEqual(AppVersion("v0.2.0"), AppVersion(0, 2, 0))
+        XCTAssertEqual(AppVersion("V1.2"), AppVersion(1, 2, 0))
+        XCTAssertEqual(AppVersion("1.2.3-beta.1"), AppVersion(1, 2, 3))
+        XCTAssertEqual(AppVersion("1.2.3+abc123"), AppVersion(1, 2, 3))
+        XCTAssertEqual(AppVersion("1.2.3.0"), AppVersion(1, 2, 3))
+        XCTAssertEqual(AppVersion(" 2.10.4\n"), AppVersion(2, 10, 4))
+    }
+
+    func testRejectsInvalidVersions() {
+        for s in [nil, "", "latest", "1.x.0", "-1.0.0", "1..0"] as [String?] { XCTAssertNil(AppVersion(s), "\(String(describing: s))") }
+    }
+
+    func testComparesNumericallyNotAlphabetically() {
+        XCTAssertGreaterThan(AppVersion("0.10.0")!, AppVersion("0.9.9")!)
+        XCTAssertGreaterThan(AppVersion("1.0.0")!, AppVersion("0.99.99")!)
+        XCTAssertGreaterThan(AppVersion("0.2.1")!, AppVersion("0.2.0")!)
+        XCTAssertFalse(AppVersion("v0.2.0")! > AppVersion("0.2.0")!)
+    }
+
+    private let latestJSON = """
+    {
+      "tag_name": "v0.2.0", "html_url": "https://github.com/Lis-louis/suzu-desktop-focus/releases/tag/v0.2.0",
+      "draft": false, "prerelease": false,
+      "assets": [
+        { "name": "SuzuSetup-0.2.0-x64.exe", "state": "uploaded", "size": 62000000,
+          "browser_download_url": "https://example.invalid/SuzuSetup-0.2.0-x64.exe", "digest": "sha256:AAAA" },
+        { "name": "Suzu-0.2.0.pkg", "state": "uploaded", "size": 3000000,
+          "browser_download_url": "https://example.invalid/Suzu-0.2.0.pkg", "digest": "sha256:ABCDEF0123" }
+      ]
+    }
+    """
+
+    func testFindsMacInstallerInLatestRelease() throws {
+        let r = try XCTUnwrap(ReleaseInfo.fromGitHubJSON(Data(latestJSON.utf8)) { $0.hasPrefix("Suzu-") && $0.hasSuffix(".pkg") })
+        XCTAssertEqual(r.version, AppVersion(0, 2, 0))
+        XCTAssertEqual(r.assetName, "Suzu-0.2.0.pkg")
+        XCTAssertEqual(r.size, 3_000_000)
+        XCTAssertEqual(r.sha256, "abcdef0123")
+    }
+
+    func testReturnsNilWithoutMatchingAsset() {
+        XCTAssertNil(ReleaseInfo.fromGitHubJSON(Data(latestJSON.utf8)) { $0.hasSuffix(".zip") })
+    }
+
+    func testIgnoresDraftsAndPrereleases() {
+        let draft = latestJSON.replacingOccurrences(of: "\"draft\": false", with: "\"draft\": true")
+        let pre = latestJSON.replacingOccurrences(of: "\"prerelease\": false", with: "\"prerelease\": true")
+        XCTAssertNil(ReleaseInfo.fromGitHubJSON(Data(draft.utf8)) { _ in true })
+        XCTAssertNil(ReleaseInfo.fromGitHubJSON(Data(pre.utf8)) { _ in true })
+    }
+
+    func testToleratesMissingDigest() throws {
+        let json = latestJSON.replacingOccurrences(of: ", \"digest\": \"sha256:ABCDEF0123\"", with: "")
+        let r = try XCTUnwrap(ReleaseInfo.fromGitHubJSON(Data(json.utf8)) { $0.hasSuffix(".pkg") })
+        XCTAssertNil(r.sha256)
+    }
+}

@@ -119,6 +119,7 @@ final class AppSettings: ObservableObject {
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var status: MascotStatus
+    @ObservedObject var updater: Updater
     let missingAssets: [String]
 
     var body: some View {
@@ -175,6 +176,28 @@ struct SettingsView: View {
             }
             Section(L.pick("起動", "Startup")) {
                 Toggle(L.pick("ログイン時に起動", "Launch at login"), isOn: $settings.launchAtLogin)
+            }
+            Section {
+                LabeledContent(L.pick("バージョン", "Version"), value: updater.current.description)
+                HStack {
+                    let note = updater.describe(L)
+                    Text(note.isEmpty ? L.pick("新しいバージョンは自動で確認し、ダウンロードします。", "New versions are checked for and downloaded automatically.") : note)
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    if updater.state == .ready {
+                        Button(L.pick("インストール…", "Install…")) { updater.install() }
+                    } else {
+                        Button(L.pick("アップデートを確認", "Check for Updates")) { updater.check(manual: true) }
+                            .disabled(updater.state == .checking || updater.state == .downloading)
+                    }
+                }
+            } header: {
+                Text(L.pick("アプリ", "App"))
+            } footer: {
+                if !updater.enabled {
+                    Text(L.pick("開発中の起動（swift run）ではアップデートを確認しません。", "Updates aren't checked when running from source (swift run)."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Section {
                 HStack {
